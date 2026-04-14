@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: #f7faf9;
+  font-family: 'Nunito', sans-serif;
+}
+
+::-webkit-scrollbar { display: none; }
+scrollbar-width: none;
