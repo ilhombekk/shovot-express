@@ -4,36 +4,64 @@ export default function CartBar({ products, onOpen }) {
   const { items, getCount, getTotal } = useCartStore()
   const count = getCount()
   const total = getTotal(products)
-
-  if (count === 0) {
-    return (
-      <div className="sticky bottom-0 px-3.5 pb-4 pt-2.5 bg-[#f7faf9] border-t border-gray-100">
-        <button
-          disabled
-          className="w-full py-3.5 bg-gray-200 text-gray-400 rounded-2xl font-extrabold text-sm"
-        >
-          Savat bo'sh
-        </button>
-      </div>
-    )
-  }
-
+  
+  if (count === 0) return (
+    <div style={{ padding: '10px 14px 16px', background: '#f5f5f5' }}>
+    <button disabled style={{
+      width: '100%',
+      padding: '14px',
+      background: '#e8e8e8',
+      color: '#bbb',
+      border: 'none',
+      borderRadius: 14,
+      fontSize: 15,
+      fontWeight: 700,
+      fontFamily: 'inherit',
+    }}>
+    Savat bo'sh
+    </button>
+    </div>
+  )
+  
   return (
-    <div className="sticky bottom-0 px-3.5 pb-4 pt-2.5 bg-[#f7faf9] border-t border-gray-100">
-      <button
-        onClick={onOpen}
-        className="w-full py-3.5 bg-[#2db67d] text-white rounded-2xl font-extrabold text-sm flex items-center justify-between px-4 active:scale-98 transition-transform"
-      >
-        <span>
-          Buyurtma berish{' '}
-          <span className="bg-white/25 px-2.5 py-0.5 rounded-full text-xs ml-1">
-            {count} ta
-          </span>
-        </span>
-        <span className="font-bold">
-          {total.toLocaleString('uz-UZ')} so'm
-        </span>
-      </button>
+    <div style={{
+      padding: '10px 14px 16px',
+      background: '#fff',
+      borderTop: '1px solid #f0f0f0',
+      position: 'sticky',
+      bottom: 0,
+    }}>
+    <button
+    onClick={onOpen}
+    style={{
+      width: '100%',
+      padding: '14px 18px',
+      background: '#21a95a',
+      color: '#fff',
+      border: 'none',
+      borderRadius: 14,
+      fontSize: 15,
+      fontWeight: 800,
+      fontFamily: 'inherit',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      transition: 'background 0.15s',
+    }}
+    onTouchStart={e => e.currentTarget.style.background = '#1a8a48'}
+    onTouchEnd={e => e.currentTarget.style.background = '#21a95a'}
+    >
+    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <span style={{ background: 'rgba(255,255,255,0.25)', padding: '2px 10px', borderRadius: 20, fontSize: 13 }}>
+    {count} ta
+    </span>
+    Buyurtma berish
+    </span>
+    <span style={{ fontWeight: 700, fontSize: 14 }}>
+    {total.toLocaleString('uz-UZ')} so'm
+    </span>
+    </button>
     </div>
   )
 }

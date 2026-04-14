@@ -10,13 +10,13 @@ export default function CartModal({ products, isOpen, onClose }) {
   const cartItems = getCartItems(products)
   const subtotal = getTotal(products)
   const total = subtotal + DELIVERY_FEE
-
+  
   if (!isOpen) return null
-
+  
   const handleOrder = async () => {
     try {
       await createOrder({
-        items: cartItems.map(i => ({ productId: i.id, qty: i.qty, price: i.price })),
+        items: cartItems.map(i => ({ productId: i.id, name: i.name, qty: i.qty, price: i.price })),
         total,
         deliveryFee: DELIVERY_FEE,
         telegramUser: user,
@@ -25,69 +25,109 @@ export default function CartModal({ products, isOpen, onClose }) {
       clear()
       onClose()
       alert('✅ Buyurtmangiz qabul qilindi! Tez orada bog\'lanamiz.')
-    } catch (e) {
+    } catch {
       alert('Xato yuz berdi. Qayta urinib ko\'ring.')
     }
   }
-
+  
   return (
     <div
-      className="fixed inset-0 bg-black/45 z-50 flex items-end"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+    style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.5)',
+      zIndex: 100,
+      display: 'flex',
+      alignItems: 'flex-end',
+    }}
+    onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white w-full rounded-t-3xl max-h-[80vh] overflow-y-auto">
-        <div className="w-9 h-1 bg-gray-200 rounded-full mx-auto mt-2.5 mb-3.5" />
-        <h2 className="text-lg font-extrabold px-4 pb-3 border-b border-gray-100">
-          🛒 Savatingiz
-        </h2>
-
-        <div className="px-4 py-2">
-          {cartItems.map(item => (
-            <div key={item.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-50 last:border-0">
-              <span className="text-3xl w-10 text-center">{item.emoji}</span>
-              <div className="flex-1">
-                <p className="text-sm font-bold">{item.name}</p>
-                <p className="text-xs text-gray-400 font-semibold">
-                  {item.price.toLocaleString('uz-UZ')} so'm × {item.qty}
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => remove(item.id)}
-                  className="w-6 h-6 rounded-full border border-gray-200 bg-gray-50 text-sm font-bold flex items-center justify-center"
-                >−</button>
-                <span className="text-sm font-extrabold w-4 text-center">{item.qty}</span>
-                <button
-                  onClick={() => add(item)}
-                  className="w-6 h-6 rounded-full bg-[#2db67d] text-white text-sm font-bold flex items-center justify-center"
-                >+</button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mx-4 bg-gray-50 rounded-xl p-3 mb-3">
-          <div className="flex justify-between text-sm text-gray-500 font-semibold mb-1.5">
-            <span>Mahsulotlar</span>
-            <span>{subtotal.toLocaleString('uz-UZ')} so'm</span>
-          </div>
-          <div className="flex justify-between text-sm text-gray-500 font-semibold mb-2">
-            <span>Yetkazib berish</span>
-            <span>{DELIVERY_FEE.toLocaleString('uz-UZ')} so'm</span>
-          </div>
-          <div className="flex justify-between text-base font-extrabold pt-2 border-t border-gray-200">
-            <span>Jami</span>
-            <span>{total.toLocaleString('uz-UZ')} so'm</span>
-          </div>
-        </div>
-
-        <button
-          onClick={handleOrder}
-          className="mx-4 mb-6 w-[calc(100%-32px)] py-3.5 bg-[#2db67d] text-white rounded-2xl font-extrabold text-sm active:bg-[#1f9463] transition-colors"
-        >
-          Buyurtma berish
-        </button>
+    <div style={{
+      background: '#fff',
+      width: '100%',
+      borderRadius: '20px 20px 0 0',
+      maxHeight: '85vh',
+      overflowY: 'auto',
+      fontFamily: 'inherit',
+    }}>
+    {/* Handle */}
+    <div style={{ width: 36, height: 4, background: '#e0e0e0', borderRadius: 2, margin: '10px auto 0' }} />
+    
+    {/* Header */}
+    <div style={{ padding: '14px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f5f5f5' }}>
+    <div style={{ fontSize: 17, fontWeight: 800, color: '#1a1a1a' }}>Savatingiz</div>
+    <button onClick={onClose} style={{ background: '#f5f5f5', border: 'none', borderRadius: 20, width: 28, height: 28, cursor: 'pointer', fontSize: 14, color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+    </div>
+    
+    {/* Items */}
+    <div style={{ padding: '8px 16px' }}>
+    {cartItems.map((item, i) => (
+      <div key={item.id} style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '10px 0',
+        borderBottom: i < cartItems.length - 1 ? '1px solid #f5f5f5' : 'none',
+      }}>
+      <div style={{ fontSize: 32, width: 44, textAlign: 'center' }}>{item.emoji}</div>
+      <div style={{ flex: 1 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a1a', marginBottom: 2 }}>{item.name}</div>
+      <div style={{ fontSize: 12, color: '#aaa', fontWeight: 600 }}>{item.price.toLocaleString('uz-UZ')} so'm</div>
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <button
+      onClick={() => remove(item.id)}
+      style={{ width: 28, height: 28, borderRadius: 8, border: '1.5px solid #e8e8e8', background: '#fff', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: '#333' }}
+      >−</button>
+      <span style={{ fontSize: 15, fontWeight: 800, minWidth: 20, textAlign: 'center' }}>{item.qty}</span>
+      <button
+      onClick={() => add(item)}
+      style={{ width: 28, height: 28, borderRadius: 8, background: '#21a95a', border: 'none', color: '#fff', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}
+      >+</button>
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a1a', minWidth: 70, textAlign: 'right' }}>
+      {(item.price * item.qty).toLocaleString('uz-UZ')}
+      </div>
+      </div>
+    ))}
+    </div>
+    
+    {/* Summary */}
+    <div style={{ margin: '8px 16px', background: '#f9f9f9', borderRadius: 14, padding: '12px 14px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#888', fontWeight: 600, marginBottom: 8 }}>
+    <span>Mahsulotlar</span>
+    <span>{subtotal.toLocaleString('uz-UZ')} so'm</span>
+    </div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#888', fontWeight: 600, marginBottom: 10 }}>
+    <span>Yetkazib berish</span>
+    <span>{DELIVERY_FEE.toLocaleString('uz-UZ')} so'm</span>
+    </div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800, color: '#1a1a1a', paddingTop: 10, borderTop: '1px solid #e8e8e8' }}>
+    <span>Jami</span>
+    <span style={{ color: '#21a95a' }}>{total.toLocaleString('uz-UZ')} so'm</span>
+    </div>
+    </div>
+    
+    {/* Order button */}
+    <div style={{ padding: '8px 16px 24px' }}>
+    <button
+    onClick={handleOrder}
+    style={{
+      width: '100%',
+      padding: '15px',
+      background: '#21a95a',
+      color: '#fff',
+      border: 'none',
+      borderRadius: 14,
+      fontSize: 16,
+      fontWeight: 800,
+      fontFamily: 'inherit',
+      cursor: 'pointer',
+    }}
+    >
+    Buyurtma berish — {total.toLocaleString('uz-UZ')} so'm
+    </button>
+    </div>
+    </div>
     </div>
   )
 }

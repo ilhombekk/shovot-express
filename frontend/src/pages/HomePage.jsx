@@ -1,20 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ProductCard from '../components/ProductCard'
 import CartBar from '../components/CartBar'
 import CartModal from '../components/CartModal'
-import { getProducts, getCategories } from '../api'
+import { getProducts } from '../api'
 
 const CATEGORIES = [
-  { id: 'all', label: 'Hammasi', emoji: '🏪' },
-  { id: 'sabzavot', label: 'Sabzavot', emoji: '🥬' },
-  { id: 'meva', label: 'Meva', emoji: '🍎' },
-  { id: 'sut', label: 'Sut', emoji: '🥛' },
-  { id: 'non', label: 'Non', emoji: '🍞' },
-  { id: 'gosht', label: "Go'sht", emoji: '🥩' },
-  { id: 'ichimlik', label: 'Ichimlik', emoji: '🧃' },
+  { id: 'all',      label: 'Hammasi',     emoji: '🏪' },
+  { id: 'sabzavot', label: 'Sabzavot',    emoji: '🥬' },
+  { id: 'meva',     label: 'Meva',        emoji: '🍎' },
+  { id: 'sut',      label: 'Sut',         emoji: '🥛' },
+  { id: 'non',      label: 'Non',         emoji: '🍞' },
+  { id: 'gosht',    label: "Go'sht",      emoji: '🥩' },
+  { id: 'ichimlik', label: 'Ichimlik',    emoji: '🧃' },
 ]
 
-// Fallback — backend tayyor bo'lgunga qadar
 const MOCK_PRODUCTS = [
   { id:1,  name:'Pomidor',      weight:'1 kg',    price:12000, category:'sabzavot', emoji:'🍅' },
   { id:2,  name:'Bodring',      weight:'1 kg',    price:8000,  category:'sabzavot', emoji:'🥒' },
@@ -41,105 +40,181 @@ export default function HomePage() {
   const [activeCat, setActiveCat] = useState('all')
   const [search, setSearch] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
-
+  const [searchFocused, setSearchFocused] = useState(false)
+  const catsRef = useRef(null)
+  
   useEffect(() => {
-    // Backend tayyor bo'lganda bu ishlaydi
-    getProducts().then(res => setProducts(res.data)).catch(() => {
-      // Fallback: mock data ishlatiladi
-    })
+    getProducts().then(res => {
+      if (res.data?.length) setProducts(res.data)
+      }).catch(() => {})
   }, [])
-
+  
   const filtered = products.filter(p => {
-    const catOk = activeCat === 'all' || p.category === activeCat
+    const catOk = activeCat === 'all' || p.category === activeCat || p.category_slug === activeCat
     const searchOk = p.name.toLowerCase().includes(search.toLowerCase())
     return catOk && searchOk
   })
-
+  
+  const handleCat = (id) => {
+    setActiveCat(id)
+    setSearch('')
+  }
+  
   return (
-    <div className="flex flex-col min-h-screen bg-[#f7faf9]">
-      {/* Header */}
-      <div className="bg-[#2db67d] px-4 pt-3.5 pb-3 sticky top-0 z-10">
-        <div className="flex items-center justify-between mb-2.5">
-          <h1 className="text-xl font-extrabold text-white tracking-tight">
-            Shovot <span className="opacity-75 font-semibold">Express</span>
-          </h1>
-          <span className="bg-white/20 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-            ⚡ 30 daqiqa
-          </span>
-        </div>
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-          <input
-            className="w-full bg-white/95 rounded-xl pl-8 pr-3 py-2 text-sm outline-none font-semibold placeholder:text-gray-400"
-            placeholder="Mahsulot qidiring..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
+    <div className="flex flex-col min-h-screen" style={{ background: '#f5f5f5', fontFamily: "'Nunito', sans-serif" }}>
+    
+    {/* ── HEADER ── */}
+    <div style={{ background: '#fff', borderBottom: '1px solid #ebebeb', position: 'sticky', top: 0, zIndex: 50 }}>
+    {/* Top bar */}
+    <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div>
+    <div style={{ fontSize: 17, fontWeight: 800, color: '#1a1a1a', letterSpacing: '-0.3px' }}>
+    Shovot <span style={{ color: '#21a95a' }}>Express</span>
+    </div>
+    <div style={{ fontSize: 11, color: '#888', fontWeight: 600, marginTop: 1 }}>
+    📍 Shovot tumani
+    </div>
+    </div>
+    <div style={{
+      background: '#f0faf4',
+      color: '#21a95a',
+      fontSize: 11,
+      fontWeight: 800,
+      padding: '5px 10px',
+      borderRadius: 20,
+      border: '1px solid #c3ebd4',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 4
+    }}>
+    <span style={{ fontSize: 13 }}>⚡</span> 30 daqiqa
+    </div>
+    </div>
+    
+    {/* Search */}
+    <div style={{ padding: '0 16px 10px' }}>
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      background: '#f5f5f5',
+      borderRadius: 12,
+      padding: '9px 14px',
+      gap: 8,
+      border: searchFocused ? '1.5px solid #21a95a' : '1.5px solid transparent',
+      transition: 'border-color 0.2s',
+    }}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2.5" strokeLinecap="round">
+    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input
+    value={search}
+    onChange={e => setSearch(e.target.value)}
+    onFocus={() => setSearchFocused(true)}
+    onBlur={() => setSearchFocused(false)}
+    placeholder="Mahsulot qidiring..."
+    style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 14, fontFamily: 'inherit', flex: 1, color: '#1a1a1a' }}
+    />
+    {search && (
+      <button onClick={() => setSearch('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#aaa', fontSize: 16, padding: 0, lineHeight: 1 }}>✕</button>
+    )}
+    </div>
+    </div>
+    
+    {/* Categories */}
+    <div ref={catsRef} style={{ display: 'flex', gap: 6, padding: '0 16px 12px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+    {CATEGORIES.map(cat => (
+      <button
+      key={cat.id}
+      onClick={() => handleCat(cat.id)}
+      style={{
+        whiteSpace: 'nowrap',
+        padding: '6px 14px',
+        borderRadius: 20,
+        fontSize: 13,
+        fontWeight: 700,
+        fontFamily: 'inherit',
+        cursor: 'pointer',
+        border: activeCat === cat.id ? '1.5px solid #21a95a' : '1.5px solid #e8e8e8',
+        background: activeCat === cat.id ? '#21a95a' : '#fff',
+        color: activeCat === cat.id ? '#fff' : '#555',
+        transition: 'all 0.15s',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5,
+      }}
+      >
+      <span style={{ fontSize: 14 }}>{cat.emoji}</span>
+      {cat.label}
+      </button>
+    ))}
+    </div>
+    </div>
+    
+    {/* ── BODY ── */}
+    <div style={{ flex: 1, padding: '12px 14px 0' }}>
+    
+    {/* Banner — only on "all" tab */}
+    {activeCat === 'all' && !search && (
+      <div style={{
+        background: 'linear-gradient(135deg, #1a7a48 0%, #21a95a 60%, #2ed672 100%)',
+        borderRadius: 18,
+        padding: '16px 18px',
+        marginBottom: 16,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        overflow: 'hidden',
+        position: 'relative',
+      }}>
+      <div style={{ position: 'absolute', right: -10, top: -10, fontSize: 90, opacity: 0.15 }}>🛒</div>
+      <div>
+      <div style={{ color: '#fff', fontSize: 17, fontWeight: 800, marginBottom: 3 }}>Birinchi buyurtma</div>
+      <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 600 }}>Yetkazib berish bepul! 🎉</div>
+      <div style={{
+        marginTop: 10,
+        background: 'rgba(255,255,255,0.2)',
+        display: 'inline-block',
+        padding: '4px 12px',
+        borderRadius: 20,
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: 700,
+      }}>Hozir buyurtma bering →</div>
       </div>
-
-      {/* Categories */}
-      <div className="bg-white border-b border-gray-100 py-2.5">
-        <div className="flex gap-2 px-3.5 overflow-x-auto scrollbar-hide">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCat(cat.id)}
-              className={`whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-bold border transition-colors
-                ${activeCat === cat.id
-                  ? 'bg-[#2db67d] text-white border-[#2db67d]'
-                  : 'bg-gray-50 text-gray-500 border-gray-200'
-                }`}
-            >
-              {cat.emoji} {cat.label}
-            </button>
-          ))}
-        </div>
+      <div style={{ fontSize: 56, position: 'relative', zIndex: 1 }}>🎁</div>
       </div>
-
-      {/* Banner */}
-      <div className="mx-3.5 mt-3.5 bg-gradient-to-r from-[#1a6644] to-[#2db67d] rounded-2xl px-4 py-3.5 flex items-center justify-between">
-        <div>
-          <p className="text-white font-extrabold text-base">Birinchi buyurtma</p>
-          <p className="text-white/75 text-xs font-semibold">Yetkazib berish bepul!</p>
-        </div>
-        <span className="text-4xl">🎁</span>
+    )}
+    
+    {/* Section header */}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+    <div style={{ fontSize: 16, fontWeight: 800, color: '#1a1a1a' }}>
+    {search
+      ? `"${search}" natijalari`
+      : CATEGORIES.find(c => c.id === activeCat)?.label || 'Hammasi'
+    }
+    </div>
+    <div style={{ fontSize: 12, color: '#aaa', fontWeight: 600 }}>{filtered.length} ta mahsulot</div>
+    </div>
+    
+    {/* Products grid */}
+    {filtered.length === 0 ? (
+      <div style={{ textAlign: 'center', padding: '48px 0', color: '#aaa' }}>
+      <div style={{ fontSize: 48, marginBottom: 12 }}>🔍</div>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4, color: '#888' }}>Topilmadi</div>
+      <div style={{ fontSize: 13 }}>Boshqa so'z bilan qidiring</div>
       </div>
-
-      {/* Products */}
-      <div className="px-3.5 pt-3 pb-2">
-        <div className="flex items-center justify-between mb-2.5">
-          <h2 className="text-base font-extrabold text-gray-900">
-            {CATEGORIES.find(c => c.id === activeCat)?.label || 'Barcha mahsulotlar'}
-          </h2>
-          <span className="text-xs text-gray-400 font-semibold">{filtered.length} ta</span>
-        </div>
-
-        {filtered.length === 0 ? (
-          <div className="text-center py-10 text-gray-400">
-            <div className="text-4xl mb-2">🔍</div>
-            <p className="text-sm font-semibold">Mahsulot topilmadi</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2.5">
-            {filtered.map(product => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
-        )}
+    ) : (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, paddingBottom: 8 }}>
+      {filtered.map(product => (
+        <ProductCard key={product.id} product={product} />
+      ))}
       </div>
-
-      {/* Cart bar */}
-      <div className="mt-auto">
-        <CartBar products={products} onOpen={() => setCartOpen(true)} />
-      </div>
-
-      {/* Cart modal */}
-      <CartModal
-        products={products}
-        isOpen={cartOpen}
-        onClose={() => setCartOpen(false)}
-      />
+    )}
+    </div>
+    
+    {/* Cart bar */}
+    <CartBar products={products} onOpen={() => setCartOpen(true)} />
+    <CartModal products={products} isOpen={cartOpen} onClose={() => setCartOpen(false)} />
     </div>
   )
 }
