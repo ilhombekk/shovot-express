@@ -1,22 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
-import { MapContainer, TileLayer, Marker, Circle, useMapEvents } from 'react-leaflet'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+import { useState, useEffect, useRef } from 'react'
 import {
     getAddresses, getActiveAddress, setActiveAddress,
     addAddress, updateAddress, deleteAddress
 } from '../store/addressStore'
 
-// Leaflet default icon fix
-delete L.Icon.Default.prototype._getIconUrl
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-})
-
-const SHOVOT_LAT = 41.5534
-const SHOVOT_LNG = 60.5478
+const SHOVOT_LAT = 41.658
+const SHOVOT_LNG = 60.295
 const MAX_RADIUS_KM = 20
 
 function getDistanceKm(lat1, lng1, lat2, lng2) {
@@ -35,27 +24,33 @@ const LABELS = [
     { id: 'other', label: 'Boshqa', icon: '📍' },
 ]
 
-// Custom pin icon
-const makePinIcon = (ok) => L.divIcon({
-    html: `<div style="position:relative;width:32px;height:40px;">
-    <div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:${ok ? '#21a95a' : '#ef4444'};transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,0.3);"></div>
-    <div style="position:absolute;top:7px;left:7px;width:14px;height:14px;border-radius:50%;background:#fff;"></div>
-  </div>`,
-    iconSize: [32, 40],
-    iconAnchor: [16, 40],
-    className: '',
-})
-
-// Xarita click handler
-function ClickHandler({ onMapClick }) {
-    useMapEvents({ click: (e) => onMapClick(e.latlng.lat, e.latlng.lng) })
-    return null
+function loadLeaflet() {
+    return new Promise((resolve) => {
+        if (window.L) { resolve(window.L); return }
+        if (!document.querySelector('link[href*="leaflet"]')) {
+            const link = document.createElement('link')
+            link.rel = 'stylesheet'
+            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+            document.head.appendChild(link)
+        }
+        if (!document.querySelector('script[src*="leaflet"]')) {
+            const script = document.createElement('script')
+            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+            script.onload = () => resolve(window.L)
+            document.head.appendChild(script)
+        } else {
+            const check = setInterval(() => {
+                if (window.L) { clearInterval(check); resolve(window.L) }
+            }, 100)
+        }
+    })
 }
 
 function MapPicker({ initialLat, initialLng, onConfirm, onCancel }) {
-    const [pin, setPin] = useState(
-        initialLat && initialLng ? { lat: initialLat, lng: initialLng } : null
-    )
+    const mapRef = useRef(null)
+    const mapObjRef = useRef(null)
+    const markerRef = useRef(null)
+    const [pin, setPin] = useState(null)
     const [inZone, setInZone] = useState(null)
     const [dist, setDist] = useState(null)
     const [searchVal, setSearchVal] = useState('')
@@ -63,49 +58,98 @@ function MapPicker({ initialLat, initialLng, onConfirm, onCancel }) {
     const [searching, setSearching] = useState(false)
     const [label, setLabel] = useState('home')
     const [detail, setDetail] = useState('')
+    const [mapReady, setMapReady] = useState(false)
     
     useEffect(() => {
-        if (initialLat && initialLng) {
-            const d = getDistanceKm(initialLat, initialLng, SHOVOT_LAT, SHOVOT_LNG)
-            setInZone(d <= MAX_RADIUS_KM)
-            setDist(d.toFixed(1))
+        let cancelled = false
+        loadLeaflet().then((L) => {
+            if (cancelled || !mapRef.current || mapObjRef.current) return
+            
+            const map = L.map(mapRef.current, {
+                center: [initialLat || SHOVOT_LAT, initialLng || SHOVOT_LNG],
+                zoom: 14,
+            })
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map)
+            
+            // Zona doirasi
+            L.circle([SHOVOT_LAT, SHOVOT_LNG], {
+                radius: MAX_RADIUS_KM * 1000,
+                color: '#21a95a', fillColor: '#21a95a',
+                fillOpacity: 0.07, weight: 2, dashArray: '6 4'
+            }).addTo(map)
+            
+            const placePin = (lat, lng) => {
+                const d = getDistanceKm(lat, lng, SHOVOT_LAT, SHOVOT_LNG)
+                const ok = d <= MAX_RADIUS_KM
+                
+                const icon = L.divIcon({
+                    html: `<div style="width:32px;height:40px;position:relative;">
+            <div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:${ok ? '#21a95a' : '#ef4444'};transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,0.3);"></div>
+            <div style="position:absolute;top:7px;left:7px;width:14px;height:14px;border-radius:50%;background:#fff;"></div>
+          </div>`,
+                    iconSize: [32, 40], iconAnchor: [16, 40], className: ''
+                })
+                
+                if (markerRef.current) map.removeLayer(markerRef.current)
+                    markerRef.current = L.marker([lat, lng], { icon }).addTo(map)
+                
+                setPin({ lat, lng })
+                setInZone(ok)
+                setDist(d.toFixed(1))
+                
+                fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=uz`)
+                .then(r => r.json())
+                .then(d => setSearchVal(d.display_name?.split(',').slice(0, 3).join(', ') || ''))
+                .catch(() => {})
+            }
+            
+            map.on('click', (e) => placePin(e.latlng.lat, e.latlng.lng))
+            mapObjRef.current = { map, placePin, L }
+            
+            if (initialLat && initialLng) placePin(initialLat, initialLng)
+                setMapReady(true)
+            setTimeout(() => map.invalidateSize(), 100)
+        })
+        return () => {
+            cancelled = true
+            if (mapObjRef.current?.map) {
+                mapObjRef.current.map.remove()
+                mapObjRef.current = null
+            }
         }
-    }, [])
-    
-    const handleMapClick = useCallback((lat, lng) => {
-        const d = getDistanceKm(lat, lng, SHOVOT_LAT, SHOVOT_LNG)
-        const ok = d <= MAX_RADIUS_KM
-        setPin({ lat, lng })
-        setInZone(ok)
-        setDist(d.toFixed(1))
-        // Reverse geocode
-        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=uz`)
-        .then(r => r.json())
-        .then(d => setSearchVal(d.display_name?.split(',').slice(0, 3).join(', ') || ''))
-        .catch(() => {})
     }, [])
     
     const searchPlace = async (q) => {
         if (q.length < 3) { setSearchResults([]); return }
         setSearching(true)
         try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ' Shovot Xorazm')}&format=json&limit=4&accept-language=uz`)
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ' Xorazm')}&format=json&limit=4&accept-language=uz`)
             const data = await res.json()
             setSearchResults(data.map(d => ({ lat: parseFloat(d.lat), lng: parseFloat(d.lon), name: d.display_name })))
         } catch { setSearchResults([]) }
         setSearching(false)
     }
     
+    const selectResult = (r) => {
+        setSearchResults([])
+        setSearchVal(r.name.split(',').slice(0, 2).join(', '))
+        mapObjRef.current?.placePin(r.lat, r.lng)
+        mapObjRef.current?.map.setView([r.lat, r.lng], 16)
+    }
+    
     return (
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
         {/* Search */}
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid #f5f5f5', position: 'relative', zIndex: 500 }}>
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid #f5f5f5', position: 'relative', zIndex: 999 }}>
         <div style={{ position: 'relative' }}>
         <svg style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input value={searchVal}
         onChange={e => { setSearchVal(e.target.value); searchPlace(e.target.value) }}
         placeholder="Ko'cha yoki mahalla nomini kiriting..."
-        style={{ width: '100%', padding: '9px 12px 9px 32px', border: '1.5px solid #e8e8e8', borderRadius: 10, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+        style={{ width: '100%', padding: '9px 12px 9px 32px', border: '1.5px solid #e8e8e8', borderRadius: 10, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', color: '#1a1a1a' }}
         onFocus={e => e.target.style.borderColor = '#21a95a'}
         onBlur={e => { e.target.style.borderColor = '#e8e8e8'; setTimeout(() => setSearchResults([]), 200) }}
         />
@@ -114,7 +158,7 @@ function MapPicker({ initialLat, initialLng, onConfirm, onCancel }) {
         {searchResults.length > 0 && (
             <div style={{ position: 'absolute', left: 14, right: 14, top: '100%', background: '#fff', border: '1px solid #f0f0f0', borderRadius: 10, boxShadow: '0 6px 20px rgba(0,0,0,0.1)', zIndex: 1000, overflow: 'hidden' }}>
             {searchResults.map((r, i) => (
-                <button key={i} onMouseDown={() => { setSearchVal(r.name.split(',').slice(0, 2).join(', ')); handleMapClick(r.lat, r.lng); setSearchResults([]) }}
+                <button key={i} onMouseDown={() => selectResult(r)}
                 style={{ width: '100%', padding: '9px 12px', border: 'none', borderBottom: i < searchResults.length - 1 ? '1px solid #f8f8f8' : 'none', background: '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: '#333', display: 'flex', gap: 6, alignItems: 'center' }}>
                 <span style={{ color: '#21a95a', flexShrink: 0 }}>📍</span>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name.split(',').slice(0, 3).join(', ')}</span>
@@ -124,35 +168,27 @@ function MapPicker({ initialLat, initialLng, onConfirm, onCancel }) {
         )}
         </div>
         
-        {/* Map */}
+        {/* Map container */}
         <div style={{ flex: 1, position: 'relative', minHeight: 260 }}>
-        <MapContainer
-        center={[initialLat || SHOVOT_LAT, initialLng || SHOVOT_LNG]}
-        zoom={14}
-        style={{ width: '100%', height: '100%' }}
-        zoomControl={true}
-        >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <Circle center={[SHOVOT_LAT, SHOVOT_LNG]} radius={MAX_RADIUS_KM * 1000}
-        pathOptions={{ color: '#21a95a', fillColor: '#21a95a', fillOpacity: 0.06, weight: 2, dashArray: '6 4' }} />
-        <ClickHandler onMapClick={handleMapClick} />
-        {pin && <Marker position={[pin.lat, pin.lng]} icon={makePinIcon(inZone)} />}
-        </MapContainer>
-        
-        {/* Status badge */}
+        <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: 260 }} />
+        {!mapReady && (
+            <div style={{ position: 'absolute', inset: 0, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, fontSize: 14, color: '#aaa', fontWeight: 600 }}>
+            🗺️ Xarita yuklanmoqda...
+            </div>
+        )}
         {inZone !== null && (
             <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', background: inZone ? '#1a1a1a' : '#ef4444', color: '#fff', padding: '7px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, zIndex: 1000, whiteSpace: 'nowrap', boxShadow: '0 2px 10px rgba(0,0,0,0.2)', pointerEvents: 'none' }}>
             {inZone ? '✅ Yetkazib berish mumkin!' : `❌ Zona tashqarida (${dist} km)`}
             </div>
         )}
-        {!pin && (
+        {mapReady && !pin && (
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '9px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, zIndex: 1000, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
             👆 Xaritaga bosing
             </div>
         )}
         </div>
         
-        {/* Bottom: confirm */}
+        {/* Bottom confirm */}
         {pin && inZone && (
             <div style={{ padding: '12px 14px', borderTop: '1px solid #f5f5f5', background: '#fff', flexShrink: 0 }}>
             <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
@@ -165,7 +201,7 @@ function MapPicker({ initialLat, initialLng, onConfirm, onCancel }) {
             </div>
             <input value={detail} onChange={e => setDetail(e.target.value)}
             placeholder="Uy raqami, xonadon (ixtiyoriy)"
-            style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e8e8e8', borderRadius: 10, fontSize: 13, fontFamily: 'inherit', outline: 'none', marginBottom: 10, boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e8e8e8', borderRadius: 10, fontSize: 13, fontFamily: 'inherit', outline: 'none', marginBottom: 10, boxSizing: 'border-box', color: '#1a1a1a' }}
             onFocus={e => e.target.style.borderColor = '#21a95a'}
             onBlur={e => e.target.style.borderColor = '#e8e8e8'}
             />
@@ -194,15 +230,8 @@ export default function AddressModal({ isOpen, onClose, onSelect }) {
     const reload = () => { setAddresses(getAddresses()); setActive(getActiveAddress()) }
     
     const handleConfirm = (data) => {
-        if (editItem) {
-            updateAddress(editItem.id, data)
-            reload(); setMode('list')
-        } else {
-            const newAddr = addAddress(data)
-            setActiveAddress(newAddr)
-            onSelect?.(newAddr)
-            onClose()
-        }
+        if (editItem) { updateAddress(editItem.id, data); reload(); setMode('list') }
+        else { const a = addAddress(data); setActiveAddress(a); onSelect?.(a); onClose() }
     }
     
     const handleSelect = (addr) => { setActiveAddress(addr); onSelect?.(addr); onClose() }
@@ -215,8 +244,6 @@ export default function AddressModal({ isOpen, onClose, onSelect }) {
         onClick={e => e.target === e.currentTarget && mode === 'list' && onClose()}>
         <div style={{ background: '#fff', width: '100%', borderRadius: '20px 20px 0 0', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ width: 36, height: 4, background: '#e0e0e0', borderRadius: 2, margin: '10px auto 4px', flexShrink: 0 }} />
-        
-        {/* Header */}
         <div style={{ padding: '10px 16px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f5f5f5', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {mode !== 'list' && <button onClick={() => { setMode('list'); setEditItem(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#555', padding: 0 }}>←</button>}
@@ -227,7 +254,6 @@ export default function AddressModal({ isOpen, onClose, onSelect }) {
         <button onClick={onClose} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 14, color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
         </div>
         
-        {/* LIST */}
         {mode === 'list' && (
             <div style={{ overflowY: 'auto', flex: 1 }}>
             <button onClick={() => { setEditItem(null); setMode('map') }}
@@ -266,7 +292,6 @@ export default function AddressModal({ isOpen, onClose, onSelect }) {
             </div>
         )}
         
-        {/* MAP */}
         {mode === 'map' && (
             <MapPicker
             initialLat={editItem?.lat}

@@ -4,8 +4,8 @@ import HomePage from './pages/HomePage'
 import AdminPanel from './pages/AdminPanel'
 import RegisterPage from './pages/RegisterPage'
 
-const SHOVOT_LAT = 41.5534
-const SHOVOT_LNG = 60.5478
+const SHOVOT_LAT = 41.658
+const SHOVOT_LNG = 60.295
 const MAX_RADIUS_KM = 20
 
 function getDistanceKm(lat1, lng1, lat2, lng2) {
