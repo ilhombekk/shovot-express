@@ -1,10 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import AdminPanel from './pages/AdminPanel'
 import RegisterPage from './pages/RegisterPage'
 
-// Shovot tumani markazi va chegarasi
 const SHOVOT_LAT = 41.5534
 const SHOVOT_LNG = 60.5478
 const MAX_RADIUS_KM = 20
@@ -19,22 +18,106 @@ function getDistanceKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+// Leaflet xarita komponenti
+function MapPicker({ onSelect }) {
+  const mapRef = useRef(null)
+  const mapInstanceRef = useRef(null)
+  const markerRef = useRef(null)
+  const circleRef = useRef(null)
+  
+  useEffect(() => {
+    if (mapInstanceRef.current) return
+    
+    // Leaflet CSS
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+    
+    // Leaflet JS
+    const script = document.createElement('script')
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+    script.onload = () => {
+      const L = window.L
+      
+      const map = L.map(mapRef.current, {
+        center: [SHOVOT_LAT, SHOVOT_LNG],
+        zoom: 13,
+        zoomControl: true,
+      })
+      
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map)
+      
+      // Shovot tumani doirasi
+      circleRef.current = L.circle([SHOVOT_LAT, SHOVOT_LNG], {
+        radius: MAX_RADIUS_KM * 1000,
+        color: '#21a95a',
+        fillColor: '#21a95a',
+        fillOpacity: 0.08,
+        weight: 2,
+        dashArray: '6 4',
+      }).addTo(map)
+      
+      // Markazni belgilash
+      L.circleMarker([SHOVOT_LAT, SHOVOT_LNG], {
+        radius: 6, color: '#21a95a', fillColor: '#21a95a', fillOpacity: 1, weight: 2
+      }).addTo(map).bindPopup('Shovot tumani markazi')
+      
+      // Custom marker icon
+      const icon = L.divIcon({
+        html: `<div style="
+          width:36px;height:36px;border-radius:50% 50% 50% 0;
+          background:#21a95a;transform:rotate(-45deg);
+          border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);
+        "></div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 36],
+        className: ''
+      })
+      
+      // Xaritaga bosish
+      map.on('click', (e) => {
+        const { lat, lng } = e.latlng
+        
+        if (markerRef.current) map.removeLayer(markerRef.current)
+          markerRef.current = L.marker([lat, lng], { icon }).addTo(map)
+        
+        const dist = getDistanceKm(lat, lng, SHOVOT_LAT, SHOVOT_LNG)
+        const inZone = dist <= MAX_RADIUS_KM
+        
+        markerRef.current.bindPopup(
+          inZone
+          ? `<b>✅ Yetkazib berish mumkin</b><br>Shovot markazidan ${dist.toFixed(1)} km`
+          : `<b>❌ Zona tashqarisi</b><br>Shovot markazidan ${dist.toFixed(1)} km`
+        ).openPopup()
+        
+        onSelect({ lat, lng, inZone, dist: dist.toFixed(1) })
+      })
+      
+      mapInstanceRef.current = map
+    }
+    document.head.appendChild(script)
+    
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove()
+        mapInstanceRef.current = null
+      }
+    }
+  }, [])
+  
+  return (
+    <div ref={mapRef} style={{ width: '100%', height: '100%', borderRadius: 16, overflow: 'hidden' }} />
+  )
+}
+
 function LocationScreen({ onResult }) {
-  const [step, setStep] = useState('intro') // intro | map | outside | confirmed
-  const [loading, setLoading] = useState(false)
+  const [selected, setSelected] = useState(null)
   const [detecting, setDetecting] = useState(false)
-  const [selected, setSelected] = useState(null) // { lat, lng, name }
-  const [searchVal, setSearchVal] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [searching, setSearching] = useState(false)
   const [error, setError] = useState('')
   
-  const base = {
-    minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: '#f5f5f5', fontFamily: "'Nunito', sans-serif", padding: 20,
-  }
-  
-  // Auto detect
   const autoDetect = () => {
     if (!navigator.geolocation) { setError("Brauzeringiz joylashuvni qo'llab-quvvatlamaydi"); return }
     setDetecting(true)
@@ -42,181 +125,90 @@ function LocationScreen({ onResult }) {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setDetecting(false)
-        setSelected({ lat: pos.coords.latitude, lng: pos.coords.longitude, name: 'Avtomatik aniqlanган joylashuv' })
+        const dist = getDistanceKm(pos.coords.latitude, pos.coords.longitude, SHOVOT_LAT, SHOVOT_LNG)
+        setSelected({ lat: pos.coords.latitude, lng: pos.coords.longitude, inZone: dist <= MAX_RADIUS_KM, dist: dist.toFixed(1) })
       },
-      () => { setDetecting(false); setError("Joylashuv aniqlanmadi. Qo'lda kiriting.") },
+      () => { setDetecting(false); setError("Avtomatik aniqlanmadi. Xaritadan tanlang.") },
       { timeout: 8000 }
     )
   }
   
-  // Search via Nominatim
-  const searchPlace = async (q) => {
-    if (q.length < 3) { setSearchResults([]); return }
-    setSearching(true)
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ' Xorazm Uzbekistan')}&format=json&limit=5&accept-language=uz`)
-      const data = await res.json()
-      setSearchResults(data.map(d => ({ lat: parseFloat(d.lat), lng: parseFloat(d.lon), name: d.display_name })))
-    } catch { setSearchResults([]) }
-    setSearching(false)
+  const confirm = () => {
+    if (!selected) { setError('Xaritadan joylashuvni tanlang'); return }
+    if (!selected.inZone) { setError(`Kechirasiz, bu joy yetkazib berish zonasidan tashqarida (${selected.dist} km)`); return }
+    localStorage.setItem('shovot_geo', JSON.stringify({ ok: true, dist: selected.dist, ts: Date.now() }))
+    onResult(true)
   }
   
-  const checkAndConfirm = (loc) => {
-    const dist = getDistanceKm(loc.lat, loc.lng, SHOVOT_LAT, SHOVOT_LNG)
-    if (dist <= MAX_RADIUS_KM) {
-      localStorage.setItem('shovot_geo', JSON.stringify({ ok: true, dist: dist.toFixed(1), ts: Date.now() }))
-      onResult(true)
-    } else {
-      setSelected(loc)
-      setStep('outside')
-    }
-  }
-  
-  // INTRO
-  if (step === 'intro') return (
-    <div style={base}>
-    <div style={{ background: '#fff', borderRadius: 24, padding: '36px 28px', maxWidth: 400, width: '100%', textAlign: 'center', boxShadow: '0 8px 40px rgba(0,0,0,0.08)' }}>
-    <div style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 6 }}>
+  return (
+    <div style={{ minHeight: '100vh', background: '#f5f5f5', fontFamily: "'Nunito', sans-serif", display: 'flex', flexDirection: 'column' }}>
+    
+    {/* Header */}
+    <div style={{ background: '#fff', borderBottom: '1px solid #ebebeb', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div style={{ fontSize: 18, fontWeight: 800 }}>
     Shovot <span style={{ color: '#21a95a' }}>Express</span>
     </div>
-    <div style={{ fontSize: 56, margin: '20px 0' }}>📍</div>
-    <div style={{ fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginBottom: 10 }}>
-    Joylashuvingizni tasdiqlang
-    </div>
-    <div style={{ fontSize: 14, color: '#666', lineHeight: 1.6, marginBottom: 24 }}>
-    Biz faqat <strong>Shovot tumani</strong> va atrofida yetkazib beramiz. Iltimos, joylashuvingizni tanlang.
+    <div style={{ fontSize: 13, color: '#aaa', fontWeight: 600 }}>— Joylashuvni tasdiqlang</div>
     </div>
     
-    <button onClick={() => { autoDetect(); setStep('map') }}
-    style={{ width: '100%', padding: '13px', background: '#21a95a', color: '#fff', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', marginBottom: 10 }}>
-    📡 Avtomatik aniqlash
-    </button>
-    <button onClick={() => setStep('map')}
-    style={{ width: '100%', padding: '13px', background: '#f5f5f5', color: '#555', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer' }}>
-    🗺️ O'zim tanlash
-    </button>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxWidth: 600, margin: '0 auto', width: '100%', padding: '16px 16px 0' }}>
+    
+    {/* Info */}
+    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '10px 14px', marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
+    <span style={{ fontSize: 18 }}>📍</span>
+    <div>
+    <div style={{ fontSize: 13, fontWeight: 700, color: '#166534' }}>Xaritadan joylashuvingizni tanlang</div>
+    <div style={{ fontSize: 12, color: '#16a34a', marginTop: 1 }}>Yashil doira — yetkazib berish zonasi ({MAX_RADIUS_KM} km)</div>
     </div>
-    </div>
-  )
-  
-  // OUTSIDE
-  if (step === 'outside') return (
-    <div style={base}>
-    <div style={{ background: '#fff', borderRadius: 24, padding: '36px 28px', maxWidth: 400, width: '100%', textAlign: 'center', boxShadow: '0 8px 40px rgba(0,0,0,0.08)' }}>
-    <div style={{ fontSize: 64, marginBottom: 16 }}>🗺️</div>
-    <div style={{ fontSize: 20, fontWeight: 800, color: '#1a1a1a', marginBottom: 10 }}>
-    Hizmat zonasidan tashqaridasiz
-    </div>
-    <div style={{ fontSize: 14, color: '#666', lineHeight: 1.6, marginBottom: 16 }}>
-    Shovot Express faqat <strong>Shovot tumani</strong> ichida yetkazib beradi (radius: {MAX_RADIUS_KM} km).
-    </div>
-    <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 12, padding: '12px 16px', marginBottom: 24, fontSize: 13, color: '#991b1b', fontWeight: 600 }}>
-    Siz tanlagan joylashuv Shovot tumaniga {getDistanceKm(selected?.lat, selected?.lng, SHOVOT_LAT, SHOVOT_LNG).toFixed(0)} km uzoqda
-    </div>
-    <button onClick={() => { setStep('map'); setSelected(null); setError('') }}
-    style={{ width: '100%', padding: '13px', background: '#21a95a', color: '#fff', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer' }}>
-    Qayta tanlash
-    </button>
-    </div>
-    </div>
-  )
-  
-  // MAP / MANUAL SELECT
-  if (step === 'map') return (
-    <div style={base}>
-    <div style={{ background: '#fff', borderRadius: 24, padding: '28px', maxWidth: 460, width: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.08)' }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-    <button onClick={() => setStep('intro')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#555', padding: 0 }}>←</button>
-    <div style={{ fontSize: 17, fontWeight: 800 }}>Joylashuvni tanlang</div>
     </div>
     
-    {/* Auto detect button */}
+    {/* Auto detect */}
     <button onClick={autoDetect} disabled={detecting}
-    style={{ width: '100%', padding: '11px', background: detecting ? '#e8f5e9' : '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: detecting ? 'default' : 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+    style={{ width: '100%', padding: '10px', background: detecting ? '#f0f0f0' : '#fff', border: '1px solid #e0e0e0', borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: detecting ? 'default' : 'pointer', marginBottom: 10, color: '#555' }}>
     {detecting ? '⏳ Aniqlanmoqda...' : '📡 Joylashuvni avtomatik aniqlash'}
     </button>
     
-    {/* Divider */}
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-    <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
-    <span style={{ fontSize: 12, color: '#aaa', fontWeight: 600 }}>yoki qidiring</span>
-    <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
-    </div>
+    {/* Map */}
+    <div style={{ flex: 1, minHeight: 380, borderRadius: 16, overflow: 'hidden', border: '2px solid #e0e0e0', marginBottom: 12, position: 'relative' }}>
+    <MapPicker onSelect={setSelected} />
     
-    {/* Search */}
-    <div style={{ position: 'relative', marginBottom: 12 }}>
-    <input
-    value={searchVal}
-    onChange={e => { setSearchVal(e.target.value); searchPlace(e.target.value) }}
-    placeholder="Ko'cha, mahalla nomini kiriting..."
-    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e8e8e8', borderRadius: 12, fontSize: 14, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
-    onFocus={e => e.target.style.borderColor = '#21a95a'}
-    onBlur={e => e.target.style.borderColor = '#e8e8e8'}
-    />
-    {searching && <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#aaa' }}>🔍</div>}
-    </div>
-    
-    {/* Search results */}
-    {searchResults.length > 0 && (
-      <div style={{ border: '1px solid #f0f0f0', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
-      {searchResults.map((r, i) => (
-        <button key={i} onClick={() => { setSelected(r); setSearchResults([]); setSearchVal(r.name.split(',')[0]) }}
-        style={{ width: '100%', padding: '10px 14px', border: 'none', borderBottom: i < searchResults.length - 1 ? '1px solid #f5f5f5' : 'none', background: selected?.lat === r.lat ? '#f0fdf4' : '#fff', textAlign: 'left', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: '#333', lineHeight: 1.4 }}>
-        📍 {r.name.split(',').slice(0, 3).join(', ')}
-        </button>
-      ))}
+    {/* Hint overlay */}
+    {!selected && (
+      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0,0,0,0.6)', color: '#fff', padding: '10px 18px', borderRadius: 20, fontSize: 13, fontWeight: 700, pointerEvents: 'none', zIndex: 1000, whiteSpace: 'nowrap' }}>
+      👆 Xaritaga bosing
       </div>
     )}
-    
-    {/* Shovot quick select */}
-    <div style={{ marginBottom: 16 }}>
-    <div style={{ fontSize: 12, color: '#aaa', fontWeight: 600, marginBottom: 8 }}>Tez tanlash:</div>
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-    {[
-      { name: 'Shovot shahri', lat: 41.5534, lng: 60.5478 },
-      { name: 'Shovot markazi', lat: 41.5520, lng: 60.5460 },
-      { name: 'Shovot bozori', lat: 41.5550, lng: 60.5500 },
-      { name: 'Yoshlik MFY', lat: 41.5490, lng: 60.5440 },
-      { name: 'Tinchlik MFY', lat: 41.5570, lng: 60.5510 },
-    ].map(loc => (
-      <button key={loc.name} onClick={() => setSelected(loc)}
-      style={{ padding: '6px 12px', border: `1.5px solid ${selected?.name === loc.name ? '#21a95a' : '#e8e8e8'}`, borderRadius: 20, background: selected?.name === loc.name ? '#f0fdf4' : '#fff', color: selected?.name === loc.name ? '#21a95a' : '#555', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
-      {loc.name}
-      </button>
-    ))}
-    </div>
     </div>
     
-    {/* Selected location preview */}
+    {/* Selected info */}
     {selected && (
-      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-      <span style={{ fontSize: 20 }}>✅</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#166534' }}>Tanlangan joylashuv</div>
-      <div style={{ fontSize: 12, color: '#16a34a', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-      {typeof selected.name === 'string' ? selected.name.split(',').slice(0, 2).join(', ') : 'Joylashuv tanlandi'}
+      <div style={{ background: selected.inZone ? '#f0fdf4' : '#fee2e2', border: `1px solid ${selected.inZone ? '#bbf7d0' : '#fca5a5'}`, borderRadius: 12, padding: '10px 14px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 20 }}>{selected.inZone ? '✅' : '❌'}</span>
+      <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: selected.inZone ? '#166534' : '#991b1b' }}>
+      {selected.inZone ? 'Yetkazib berish mumkin!' : 'Zona tashqarida'}
+      </div>
+      <div style={{ fontSize: 12, color: selected.inZone ? '#16a34a' : '#dc2626', marginTop: 1 }}>
+      Shovot markazidan {selected.dist} km
       </div>
       </div>
       </div>
     )}
     
     {error && (
-      <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#991b1b', fontWeight: 600 }}>
+      <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10, padding: '8px 14px', marginBottom: 10, fontSize: 13, color: '#991b1b', fontWeight: 600 }}>
       {error}
       </div>
     )}
     
-    <button
-    onClick={() => selected ? checkAndConfirm(selected) : setError("Iltimos, joylashuvni tanlang")}
-    disabled={!selected}
-    style={{ width: '100%', padding: '14px', background: selected ? '#21a95a' : '#e0e0e0', color: selected ? '#fff' : '#aaa', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: selected ? 'pointer' : 'default', transition: 'background 0.2s' }}>
-    Tasdiqlash va davom etish →
+    {/* Confirm button */}
+    <button onClick={confirm}
+    style={{ width: '100%', padding: '14px', background: selected?.inZone ? '#21a95a' : '#e0e0e0', color: selected?.inZone ? '#fff' : '#aaa', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: selected?.inZone ? 'pointer' : 'default', marginBottom: 20, transition: 'background 0.2s' }}>
+    {selected?.inZone ? 'Tasdiqlash va davom etish →' : 'Joylashuvni tanlang'}
     </button>
     </div>
     </div>
   )
-  
-  return null
 }
 
 export default function App() {

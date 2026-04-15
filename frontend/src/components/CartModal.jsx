@@ -2,21 +2,10 @@ import { useState, useEffect } from 'react'
 import { useCartStore } from '../store/cartStore'
 import { createOrder } from '../api'
 import { useTelegram } from '../hooks/useTelegram'
+import { getActiveAddress, getAddresses } from '../store/addressStore'
+import AddressModal from './AddressModal'
 
 const DELIVERY_FEE = 5000
-
-const MAHALLALAR = [
-  'Shovot shahri (markaz)',
-  "Bog'ot ko'chasi",
-  "Mustaqillik ko'chasi",
-  'Yoshlik mahallasi',
-  'Tinchlik mahallasi',
-  "Navro'z mahallasi",
-  "Do'stlik mahallasi",
-  'Mehnat mahallasi',
-  'Yangi hayot mahallasi',
-  'Boshqa (Shovot tumani)',
-]
 
 const getSavedUser = () => {
   try { return JSON.parse(localStorage.getItem('shovot_user') || 'null') } catch { return null }
@@ -30,46 +19,33 @@ export default function CartModal({ products, isOpen, onClose }) {
   const total = subtotal + DELIVERY_FEE
   
   const [step, setStep] = useState('cart')
-  const [address, setAddress] = useState({ mahalla: '', uy: '', izoh: '' })
-  const [errors, setErrors] = useState({})
+  const [activeAddress, setActiveAddress] = useState(null)
+  const [addressOpen, setAddressOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   
   useEffect(() => {
     if (isOpen) {
-      const u = getSavedUser()
-      if (u?.address) {
-        setAddress({ mahalla: u.address.mahalla || '', uy: u.address.uy || '', izoh: '' })
-      }
       setStep('cart')
+      setActiveAddress(getActiveAddress())
     }
   }, [isOpen])
   
   if (!isOpen) return null
   
   const savedUser = getSavedUser()
-  
-  const resetAndClose = () => { setStep('cart'); setErrors({}); onClose() }
-  
-  const validateAddress = () => {
-    const e = {}
-    if (!address.mahalla) e.mahalla = 'Mahallani tanlang'
-    if (!address.uy.trim()) e.uy = "Uy raqamini kiriting"
-    setErrors(e)
-    return Object.keys(e).length === 0
-  }
+  const hasAddress = activeAddress && activeAddress.mahalla && activeAddress.uy
   
   const handleOrder = async () => {
+    if (!hasAddress) { setAddressOpen(true); return }
     setLoading(true)
     try {
-      const fullAddress = `${address.mahalla}, uy: ${address.uy}${address.izoh ? ', ' + address.izoh : ''}`
-      if (savedUser) {
-        savedUser.address = { mahalla: address.mahalla, uy: address.uy }
-        localStorage.setItem('shovot_user', JSON.stringify(savedUser))
-      }
+      const fullAddress = `${activeAddress.mahalla}, uy: ${activeAddress.uy}${activeAddress.izoh ? ', ' + activeAddress.izoh : ''}`
       await createOrder({
         items: cartItems.map(i => ({ productId: i.id, name: i.name, qty: i.qty, price: i.price })),
-        total, deliveryFee: DELIVERY_FEE, address: fullAddress,
-        customerName: savedUser?.name, customerPhone: savedUser?.phone,
+        total, deliveryFee: DELIVERY_FEE,
+        address: fullAddress,
+        customerName: savedUser?.name,
+        customerPhone: savedUser?.phone,
         telegramUser: user, queryId,
       })
       clear()
@@ -78,11 +54,10 @@ export default function CartModal({ products, isOpen, onClose }) {
     finally { setLoading(false) }
   }
   
-  const s = { fontFamily: "'Nunito', sans-serif" }
-  
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'flex-end', ...s }}
-    onClick={e => e.target === e.currentTarget && resetAndClose()}>
+    <>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'flex-end', fontFamily: "'Nunito', sans-serif" }}
+    onClick={e => e.target === e.currentTarget && onClose()}>
     <div style={{ background: '#fff', width: '100%', borderRadius: '20px 20px 0 0', maxHeight: '90vh', overflowY: 'auto' }}>
     <div style={{ width: 36, height: 4, background: '#e0e0e0', borderRadius: 2, margin: '10px auto 0' }} />
     
@@ -94,9 +69,29 @@ export default function CartModal({ products, isOpen, onClose }) {
       <div style={{ fontSize: 17, fontWeight: 800 }}>Savat</div>
       {savedUser && <div style={{ fontSize: 12, color: '#21a95a', marginTop: 1, fontWeight: 600 }}>👋 {savedUser.name}</div>}
       </div>
-      <button onClick={resetAndClose} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 14, color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+      <button onClick={onClose} style={{ background: '#f5f5f5', border: 'none', borderRadius: '50%', width: 28, height: 28, cursor: 'pointer', fontSize: 14, color: '#888', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
       </div>
       
+      {/* Address bar */}
+      <button onClick={() => setAddressOpen(true)}
+      style={{ width: '100%', padding: '10px 16px', border: 'none', borderBottom: '1px solid #f5f5f5', background: hasAddress ? '#f0fdf4' : '#fff8e1', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'inherit', textAlign: 'left' }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill={hasAddress ? '#21a95a' : '#f59e0b'}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+      <div style={{ flex: 1, minWidth: 0 }}>
+      {hasAddress ? (
+        <>
+        <div style={{ fontSize: 12, color: '#21a95a', fontWeight: 600 }}>Yetkazib berish manzili</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {activeAddress.mahalla}, {activeAddress.uy}
+        </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>Manzil tanlang →</div>
+      )}
+      </div>
+      <span style={{ fontSize: 13, color: '#aaa' }}>›</span>
+      </button>
+      
+      {/* Items */}
       <div style={{ padding: '6px 16px' }}>
       {cartItems.map((item, i) => (
         <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: i < cartItems.length - 1 ? '1px solid #f5f5f5' : 'none' }}>
@@ -115,6 +110,7 @@ export default function CartModal({ products, isOpen, onClose }) {
       ))}
       </div>
       
+      {/* Summary */}
       <div style={{ margin: '8px 16px', background: '#f9f9f9', borderRadius: 12, padding: '12px 14px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#888', marginBottom: 6 }}><span>Mahsulotlar</span><span>{subtotal.toLocaleString('uz-UZ')} so'm</span></div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#888', marginBottom: 10 }}><span>Yetkazib berish</span><span>{DELIVERY_FEE.toLocaleString('uz-UZ')} so'm</span></div>
@@ -122,117 +118,15 @@ export default function CartModal({ products, isOpen, onClose }) {
       </div>
       
       <div style={{ padding: '8px 16px 28px' }}>
-      <button onClick={() => setStep('address')} style={{ width: '100%', padding: '15px', background: '#21a95a', color: '#fff', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer' }}>
-      Davom etish → Manzil
-      </button>
-      </div>
-      </>
-    )}
-    
-    {/* STEP 2: Address */}
-    {step === 'address' && (
-      <>
-      <div style={{ padding: '14px 16px 12px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #f5f5f5' }}>
-      <button onClick={() => setStep('cart')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#555', padding: 0 }}>←</button>
-      <div style={{ fontSize: 17, fontWeight: 800 }}>Yetkazib berish manzili</div>
-      </div>
-      
-      <div style={{ margin: '14px 16px 0', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '10px 14px', display: 'flex', gap: 10 }}>
-      <span>📍</span>
-      <div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#166534' }}>Faqat Shovot tumani</div>
-      <div style={{ fontSize: 12, color: '#16a34a', marginTop: 2 }}>Yetkazib berish faqat Shovot tumani ichida</div>
-      </div>
-      </div>
-      
-      {savedUser?.address?.mahalla && (
-        <div style={{ margin: '8px 16px 0', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#92400e', fontWeight: 600 }}>
-        💾 Saqlangan: {savedUser.address.mahalla}, {savedUser.address.uy}
-        </div>
-      )}
-      
-      <div style={{ padding: '14px 16px' }}>
-      <div style={{ marginBottom: 14 }}>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#333', marginBottom: 6 }}>Mahalla *</label>
-      <select value={address.mahalla} onChange={e => { setAddress({ ...address, mahalla: e.target.value }); setErrors({ ...errors, mahalla: '' }) }}
-      style={{ width: '100%', padding: '11px 12px', border: `1.5px solid ${errors.mahalla ? '#dc2626' : '#e8e8e8'}`, borderRadius: 10, fontSize: 14, fontFamily: 'inherit', outline: 'none', background: '#fff', boxSizing: 'border-box' }}>
-      <option value="">Mahallani tanlang...</option>
-      {MAHALLALAR.map(m => <option key={m} value={m}>{m}</option>)}
-      </select>
-      {errors.mahalla && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>{errors.mahalla}</div>}
-      </div>
-      
-      <div style={{ marginBottom: 14 }}>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#333', marginBottom: 6 }}>Uy / Xonadon *</label>
-      <input value={address.uy} onChange={e => { setAddress({ ...address, uy: e.target.value }); setErrors({ ...errors, uy: '' }) }}
-      placeholder="12-uy, 3-xonadon"
-      style={{ width: '100%', padding: '11px 12px', border: `1.5px solid ${errors.uy ? '#dc2626' : '#e8e8e8'}`, borderRadius: 10, fontSize: 14, fontFamily: 'inherit', outline: 'none', background: '#fff', boxSizing: 'border-box' }} />
-      {errors.uy && <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>{errors.uy}</div>}
-      </div>
-      
-      <div style={{ marginBottom: 20 }}>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#333', marginBottom: 6 }}>Izoh <span style={{ color: '#aaa', fontWeight: 500 }}>(ixtiyoriy)</span></label>
-      <textarea value={address.izoh} onChange={e => setAddress({ ...address, izoh: e.target.value })}
-      placeholder="2-qavat, yashil darvoza..." rows={2}
-      style={{ width: '100%', padding: '11px 12px', border: '1.5px solid #e8e8e8', borderRadius: 10, fontSize: 14, fontFamily: 'inherit', outline: 'none', background: '#fff', boxSizing: 'border-box', resize: 'none' }} />
-      </div>
-      
-      <button onClick={() => validateAddress() && setStep('confirm')}
-      style={{ width: '100%', padding: '15px', background: '#21a95a', color: '#fff', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer' }}>
-      Davom etish → Tasdiqlash
-      </button>
-      </div>
-      </>
-    )}
-    
-    {/* STEP 3: Confirm */}
-    {step === 'confirm' && (
-      <>
-      <div style={{ padding: '14px 16px 12px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #f5f5f5' }}>
-      <button onClick={() => setStep('address')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#555', padding: 0 }}>←</button>
-      <div style={{ fontSize: 17, fontWeight: 800 }}>Tasdiqlash</div>
-      </div>
-      <div style={{ padding: '14px 16px' }}>
-      {savedUser && (
-        <div style={{ background: '#f9f9f9', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
-        <div style={{ fontSize: 12, color: '#aaa', fontWeight: 600, marginBottom: 6 }}>👤 Mijoz</div>
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{savedUser.name}</div>
-        <div style={{ fontSize: 13, color: '#666', marginTop: 2 }}>📞 {savedUser.phone}</div>
-        </div>
-      )}
-      <div style={{ background: '#f9f9f9', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
-      <div style={{ fontSize: 12, color: '#aaa', fontWeight: 600, marginBottom: 6 }}>📍 Manzil</div>
-      <div style={{ fontSize: 14, fontWeight: 700 }}>{address.mahalla}</div>
-      <div style={{ fontSize: 13, color: '#555', marginTop: 2 }}>Uy: {address.uy}</div>
-      {address.izoh && <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{address.izoh}</div>}
-      </div>
-      <div style={{ background: '#f9f9f9', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
-      <div style={{ fontSize: 12, color: '#aaa', fontWeight: 600, marginBottom: 8 }}>🛒 Mahsulotlar</div>
-      {cartItems.map(item => (
-        <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0', borderBottom: '1px solid #f0f0f0' }}>
-        <span>{item.emoji} {item.name} × {item.qty}</span>
-        <span style={{ fontWeight: 700 }}>{(item.price * item.qty).toLocaleString('uz-UZ')}</span>
-        </div>
-      ))}
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#888', padding: '6px 0 2px' }}><span>Yetkazib berish</span><span>{DELIVERY_FEE.toLocaleString('uz-UZ')} so'm</span></div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 16, fontWeight: 800, paddingTop: 8, borderTop: '1px solid #e8e8e8', marginTop: 4 }}><span>Jami</span><span style={{ color: '#21a95a' }}>{total.toLocaleString('uz-UZ')} so'm</span></div>
-      </div>
-      <div style={{ background: '#fff8e1', border: '1px solid #ffd54f', borderRadius: 12, padding: '10px 14px', marginBottom: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
-      <span style={{ fontSize: 20 }}>💵</span>
-      <div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#f57f17' }}>To'lov naqd pul — kuryerga</div>
-      <div style={{ fontSize: 12, color: '#f9a825' }}>⚡ 10–30 daqiqada yetkaziladi</div>
-      </div>
-      </div>
       <button onClick={handleOrder} disabled={loading}
       style={{ width: '100%', padding: '15px', background: loading ? '#aaa' : '#21a95a', color: '#fff', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: loading ? 'default' : 'pointer' }}>
-      {loading ? 'Yuborilmoqda...' : `✅ Buyurtma berish — ${total.toLocaleString('uz-UZ')} so'm`}
+      {loading ? 'Yuborilmoqda...' : hasAddress ? `✅ Buyurtma berish — ${total.toLocaleString('uz-UZ')} so'm` : '📍 Manzil tanlang'}
       </button>
       </div>
       </>
     )}
     
-    {/* STEP 4: Success */}
+    {/* STEP: Success */}
     {step === 'success' && (
       <div style={{ padding: '40px 24px', textAlign: 'center' }}>
       <div style={{ fontSize: 72, marginBottom: 16 }}>✅</div>
@@ -240,9 +134,17 @@ export default function CartModal({ products, isOpen, onClose }) {
       <div style={{ fontSize: 14, color: '#666', lineHeight: 1.6, marginBottom: 12 }}>
       {savedUser?.name}, tez orada siz bilan bog'lanamiz
       </div>
-      <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '12px 16px', margin: '0 0 12px', fontSize: 13, color: '#166534', fontWeight: 600 }}>📍 {address.mahalla}, {address.uy}</div>
-      <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '10px 16px', margin: '0 0 24px', fontSize: 13, color: '#166534', fontWeight: 600 }}>📞 {savedUser?.phone}</div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#21a95a', marginBottom: 24 }}>Jami: {total.toLocaleString('uz-UZ')} so'm</div>
+      {activeAddress && (
+        <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '12px 16px', margin: '0 0 12px', fontSize: 13, color: '#166534', fontWeight: 600 }}>
+        📍 {activeAddress.mahalla}, {activeAddress.uy}
+        </div>
+      )}
+      <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '10px 16px', margin: '0 0 24px', fontSize: 13, color: '#166534', fontWeight: 600 }}>
+      📞 {savedUser?.phone}
+      </div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#21a95a', marginBottom: 24 }}>
+      Jami: {total.toLocaleString('uz-UZ')} so'm
+      </div>
       <button onClick={() => { setStep('cart'); onClose() }}
       style={{ padding: '13px 32px', background: '#21a95a', color: '#fff', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer' }}>
       Bosh sahifaga qaytish
@@ -251,5 +153,13 @@ export default function CartModal({ products, isOpen, onClose }) {
     )}
     </div>
     </div>
+    
+    {/* Address modal */}
+    <AddressModal
+    isOpen={addressOpen}
+    onClose={() => setAddressOpen(false)}
+    onSelect={(addr) => { setActiveAddress(addr); setAddressOpen(false) }}
+    />
+    </>
   )
 }

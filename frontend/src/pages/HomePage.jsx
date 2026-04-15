@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useCartStore } from '../store/cartStore'
 import { getProducts } from '../api'
 import CartModal from '../components/CartModal'
+import AddressModal from '../components/AddressModal'
+import { getActiveAddress } from '../store/addressStore'
 
 const CATEGORIES = [
   { id: 'all',      label: 'Barcha mahsulotlar', emoji: '🏪' },
@@ -43,7 +45,6 @@ const DELIVERY_FEE = 5000
 function ProdCard({ product }) {
   const { items, add, remove } = useCartStore()
   const qty = items[product.id] || 0
-  
   return (
     <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid #f0f0f0', transition: 'box-shadow 0.15s' }}
     onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
@@ -130,6 +131,8 @@ export default function HomePage() {
   const [activeCat, setActiveCat] = useState('all')
   const [search, setSearch] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
+  const [addressOpen, setAddressOpen] = useState(false)
+  const [activeAddress, setActiveAddress] = useState(() => getActiveAddress())
   const [showProfile, setShowProfile] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 900)
   const { items } = useCartStore()
@@ -153,22 +156,40 @@ export default function HomePage() {
     return catOk && searchOk
   })
   
+  const addressLabel = activeAddress
+  ? `${activeAddress.mahalla?.split(' ')[0]}, ${activeAddress.uy}`
+  : 'Manzil tanlang'
+  
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5', fontFamily: "'Nunito', sans-serif" }}>
     
     {/* Header */}
     <div style={{ background: '#fff', borderBottom: '1px solid #ebebeb', position: 'sticky', top: 0, zIndex: 50 }}>
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 16, height: 58 }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 14, height: 58 }}>
+    {/* Logo */}
     <div style={{ fontSize: 17, fontWeight: 800, color: '#1a1a1a', whiteSpace: 'nowrap' }}>
     Shovot <span style={{ color: '#21a95a' }}>Express</span>
     </div>
-    <div style={{ flex: 1, maxWidth: 480, position: 'relative' }}>
+    
+    {/* Address button — Yandex Lavka uslubida */}
+    <button onClick={() => setAddressOpen(true)}
+    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#f5f5f5', border: '1.5px solid #e8e8e8', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', maxWidth: 220, transition: 'border-color 0.15s' }}
+    onMouseEnter={e => e.currentTarget.style.borderColor = '#21a95a'}
+    onMouseLeave={e => e.currentTarget.style.borderColor = '#e8e8e8'}>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="#21a95a"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+    <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addressLabel}</span>
+    <span style={{ fontSize: 11, color: '#aaa' }}>›</span>
+    </button>
+    
+    {/* Search */}
+    <div style={{ flex: 1, maxWidth: 400, position: 'relative' }}>
     <svg style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Mahsulot qidiring..."
     style={{ width: '100%', padding: '8px 12px 8px 34px', background: '#f5f5f5', border: '1.5px solid transparent', borderRadius: 10, fontSize: 14, fontFamily: 'inherit', outline: 'none', color: '#1a1a1a', boxSizing: 'border-box' }}
     onFocus={e => e.target.style.borderColor = '#21a95a'}
     onBlur={e => e.target.style.borderColor = 'transparent'} />
     </div>
+    
     <div style={{ fontSize: 13, color: '#21a95a', fontWeight: 700, whiteSpace: 'nowrap' }}>⚡ 10–30 daqiqa</div>
     
     {/* User avatar */}
@@ -179,10 +200,13 @@ export default function HomePage() {
       {savedUser.name[0].toUpperCase()}
       </button>
       {showProfile && (
-        <div style={{ position: 'absolute', right: 0, top: 42, background: '#fff', border: '1px solid #f0f0f0', borderRadius: 14, padding: '14px 16px', minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 100 }}>
+        <div style={{ position: 'absolute', right: 0, top: 42, background: '#fff', border: '1px solid #f0f0f0', borderRadius: 14, padding: '14px 16px', minWidth: 210, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 100 }}>
         <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>{savedUser.name}</div>
         <div style={{ fontSize: 12, color: '#888', marginBottom: 2 }}>📞 {savedUser.phone}</div>
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 14 }}>📍 {savedUser.address?.mahalla}</div>
+        <div style={{ fontSize: 12, color: '#21a95a', marginBottom: 14, cursor: 'pointer', fontWeight: 600 }}
+        onClick={() => { setShowProfile(false); setAddressOpen(true) }}>
+        📍 Manzillarni boshqarish →
+        </div>
         <button onClick={() => { localStorage.removeItem('shovot_user'); window.location.reload() }}
         style={{ width: '100%', padding: '8px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
         Chiqish
@@ -253,7 +277,13 @@ export default function HomePage() {
       </div>
     )}
     
+    {/* Modals */}
     <CartModal products={products} isOpen={cartOpen} onClose={() => setCartOpen(false)} />
+    <AddressModal
+    isOpen={addressOpen}
+    onClose={() => setAddressOpen(false)}
+    onSelect={(addr) => setActiveAddress(addr)}
+    />
     </div>
   )
 }
