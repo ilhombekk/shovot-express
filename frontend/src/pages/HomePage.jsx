@@ -1,9 +1,51 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useCartStore } from '../store/cartStore'
-import { getProducts } from '../api'
+import { getProducts, getOrders } from '../api'
 import CartModal from '../components/CartModal'
 import AddressModal from '../components/AddressModal'
 import { getActiveAddress } from '../store/addressStore'
+import OrdersPage from './OrdersPage'
+
+const STATUS_LABEL = {
+  new:        { label: 'Yangi',         color: '#92400e', bg: '#fef3c7' },
+  confirmed:  { label: 'Tasdiqlandi',   color: '#1e40af', bg: '#dbeafe' },
+  delivering: { label: 'Yetkazilmoqda', color: '#065f46', bg: '#d1fae5' },
+  done:       { label: 'Yetkazildi',    color: '#166534', bg: '#f0fdf4' },
+  cancelled:  { label: 'Bekor',         color: '#991b1b', bg: '#fee2e2' },
+}
+
+function ProfilePopup({ user, onClose, onAddress, onOrders }) {
+  const ref = useRef(null)
+  
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    setTimeout(() => document.addEventListener('mousedown', handler), 0)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+  
+  return (
+    <div ref={ref} style={{ position: 'absolute', right: 0, top: 42, background: '#fff', border: '1px solid #f0f0f0', borderRadius: 16, minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', zIndex: 100, overflow: 'hidden' }}>
+    <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid #f5f5f5' }}>
+    <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 3 }}>{user.name}</div>
+    <div style={{ fontSize: 12, color: '#888', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+    <span>📞</span>{user.phone}
+    </div>
+    <div onClick={onAddress} style={{ fontSize: 12, color: '#21a95a', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
+    <span>📍</span>Manzillarni boshqarish →
+    </div>
+    <div onClick={onOrders} style={{ fontSize: 12, color: '#555', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
+    <span>📦</span>Barcha buyurtmalar →
+    </div>
+    </div>
+    <div style={{ padding: '10px 16px 14px' }}>
+    <button onClick={() => { localStorage.removeItem('shovot_user'); window.location.reload() }}
+    style={{ width: '100%', padding: '8px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+    Chiqish
+    </button>
+    </div>
+    </div>
+  )
+}
 
 const CATEGORIES = [
   { id: 'all',      label: 'Barcha mahsulotlar', emoji: '🏪' },
@@ -132,6 +174,7 @@ export default function HomePage() {
   const [search, setSearch] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
   const [addressOpen, setAddressOpen] = useState(false)
+  const [ordersOpen, setOrdersOpen] = useState(false)
   const [activeAddress, setActiveAddress] = useState(() => getActiveAddress())
   const [showProfile, setShowProfile] = useState(false)
   const [isMobile, setIsMobile] = useState(window.innerWidth < 900)
@@ -157,7 +200,7 @@ export default function HomePage() {
   })
   
   const addressLabel = activeAddress
-  ? `${activeAddress.mahalla?.split(' ')[0]}, ${activeAddress.uy}`
+  ? `${activeAddress.mahalla}${activeAddress.uy ? ', ' + activeAddress.uy : ''}`
   : 'Manzil tanlang'
   
   return (
@@ -167,13 +210,13 @@ export default function HomePage() {
     <div style={{ background: '#fff', borderBottom: '1px solid #ebebeb', position: 'sticky', top: 0, zIndex: 50 }}>
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 14, height: 58 }}>
     {/* Logo */}
-    <div style={{ fontSize: 17, fontWeight: 800, color: '#1a1a1a', whiteSpace: 'nowrap' }}>
+    <div onClick={() => setOrdersOpen(false)} style={{ fontSize: 17, fontWeight: 800, color: '#1a1a1a', whiteSpace: 'nowrap', cursor: 'pointer' }}>
     Shovot <span style={{ color: '#21a95a' }}>Express</span>
     </div>
     
     {/* Address button — Yandex Lavka uslubida */}
     <button onClick={() => setAddressOpen(true)}
-    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#f5f5f5', border: '1.5px solid #e8e8e8', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', maxWidth: 220, transition: 'border-color 0.15s' }}
+    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: '#f5f5f5', border: '1.5px solid #e8e8e8', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', maxWidth: 320, flexShrink: 0, transition: 'border-color 0.15s' }}
     onMouseEnter={e => e.currentTarget.style.borderColor = '#21a95a'}
     onMouseLeave={e => e.currentTarget.style.borderColor = '#e8e8e8'}>
     <svg width="14" height="14" viewBox="0 0 24 24" fill="#21a95a"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
@@ -200,18 +243,12 @@ export default function HomePage() {
       {savedUser.name[0].toUpperCase()}
       </button>
       {showProfile && (
-        <div style={{ position: 'absolute', right: 0, top: 42, background: '#fff', border: '1px solid #f0f0f0', borderRadius: 14, padding: '14px 16px', minWidth: 210, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 100 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>{savedUser.name}</div>
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 2 }}>📞 {savedUser.phone}</div>
-        <div style={{ fontSize: 12, color: '#21a95a', marginBottom: 14, cursor: 'pointer', fontWeight: 600 }}
-        onClick={() => { setShowProfile(false); setAddressOpen(true) }}>
-        📍 Manzillarni boshqarish →
-        </div>
-        <button onClick={() => { localStorage.removeItem('shovot_user'); window.location.reload() }}
-        style={{ width: '100%', padding: '8px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-        Chiqish
-        </button>
-        </div>
+        <ProfilePopup
+        user={savedUser}
+        onClose={() => setShowProfile(false)}
+        onAddress={() => { setShowProfile(false); setAddressOpen(true) }}
+        onOrders={() => { setShowProfile(false); setOrdersOpen(true) }}
+        />
       )}
       </div>
     )}
@@ -284,6 +321,13 @@ export default function HomePage() {
     onClose={() => setAddressOpen(false)}
     onSelect={(addr) => setActiveAddress(addr)}
     />
+    
+    {/* Buyurtmalar sahifasi */}
+    {ordersOpen && (
+      <div style={{ position: 'fixed', inset: 0, background: '#f5f5f5', zIndex: 150, overflowY: 'auto' }}>
+      <OrdersPage onBack={() => setOrdersOpen(false)} />
+      </div>
+    )}
     </div>
   )
 }

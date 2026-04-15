@@ -33,7 +33,7 @@ export default function CartModal({ products, isOpen, onClose }) {
   if (!isOpen) return null
   
   const savedUser = getSavedUser()
-  const hasAddress = activeAddress && activeAddress.mahalla && activeAddress.uy
+  const hasAddress = activeAddress && activeAddress.mahalla
   
   const handleOrder = async () => {
     if (!hasAddress) { setAddressOpen(true); return }
@@ -158,7 +158,11 @@ export default function CartModal({ products, isOpen, onClose }) {
     <AddressModal
     isOpen={addressOpen}
     onClose={() => setAddressOpen(false)}
-    onSelect={(addr) => { setActiveAddress(addr); setAddressOpen(false) }}
+    onSelect={(addr) => {
+      setActiveAddress(addr)
+      setAddressOpen(false)
+    }}
+    preventParentClose
     />
     </>
   )
