@@ -76,7 +76,10 @@ function Card({ p, mobile }) {
   return (
     <div style={{ background:'#fff', borderRadius:mobile?14:16, overflow:'hidden', height:'100%', display:'flex', flexDirection:'column' }}>
     <div style={{ position:'relative', paddingTop: mobile ? '80%' : '72%', background:'#f7f7f7', flexShrink:0 }}>
-    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize: mobile ? 48 : 56 }}>{p.emoji}</div>
+    {p.image_url
+      ? <img src={p.image_url} alt={p.name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} />
+      : <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize: mobile ? 48 : 56 }}>{p.emoji || '📦'}</div>
+    }
     {qty === 0
       ? <button onClick={()=>add(p)}
       style={{ position:'absolute', bottom:8, right:8, width:mobile?28:32, height:mobile?28:32, borderRadius:'50%', background:'#fff', border:'1.5px solid #e0e0e0', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#21a95a', fontWeight:800, boxShadow:'0 2px 6px rgba(0,0,0,0.1)' }}>+</button>
@@ -118,7 +121,10 @@ function CartSide({ products, onOpen }) {
       <div style={{ maxHeight:340, overflowY:'auto' }}>
       {list.map(item => (
         <div key={item.id} style={{ padding:'8px 16px', display:'flex', alignItems:'center', gap:10, borderBottom:'1px solid #f8f8f8' }}>
-        <span style={{ fontSize:24, flexShrink:0 }}>{item.emoji}</span>
+        {item.image_url
+          ? <img src={item.image_url} alt={item.name} style={{ width:32, height:32, borderRadius:8, objectFit:'cover', flexShrink:0 }} />
+          : <span style={{ fontSize:24, flexShrink:0, width:32, textAlign:'center' }}>{item.emoji || '📦'}</span>
+        }
         <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</div>
         <div style={{ fontSize:11, color:'#aaa' }}>{item.price.toLocaleString('uz-UZ')} so'm</div>
