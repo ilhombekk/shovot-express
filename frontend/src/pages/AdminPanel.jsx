@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 
 const API = 'https://shovot-express.onrender.com/api'
@@ -218,98 +218,345 @@ function Orders({ orders, onRefresh }) {
 }
 
 // ── Products ──────────────────────────────────────────
-function Products({ products, onRefresh }) {
-    const [showForm, setShowForm] = useState(false)
-    const [editItem, setEditItem] = useState(null)
-    const [form, setForm] = useState({ name: '', weight: '', price: '', category_slug: 'sabzavot', emoji: '' })
-    const [search, setSearch] = useState('')
+const CAT_LIST = [
+    { slug: 'sabzavot', label: 'Sabzavot',     emoji: '🥬' },
+    { slug: 'meva',     label: 'Meva',         emoji: '🍎' },
+    { slug: 'sut',      label: 'Sut mahsulot', emoji: '🥛' },
+    { slug: 'non',      label: 'Non & xamir',  emoji: '🍞' },
+    { slug: 'gosht',    label: "Go'sht",       emoji: '🥩' },
+    { slug: 'ichimlik', label: 'Ichimlik',     emoji: '🧃' },
+]
+
+function ProductModal({ item, onSave, onClose }) {
+    const [form, setForm] = useState({
+        name: item?.name || '',
+        weight: item?.weight || '',
+        price: item?.price || '',
+        category_slug: item?.category_slug || item?.category || 'sabzavot',
+        in_stock: item?.in_stock ?? 1,
+    })
+    const [imageFile, setImageFile] = useState(null)
+    const [imagePreview, setImagePreview] = useState(item?.image_url || null)
+    const [saving, setSaving] = useState(false)
+    const [uploading, setUploading] = useState(false)
+    const [errors, setErrors] = useState({})
+    const fileRef = useRef(null)
     
-    const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    const validate = () => {
+        const e = {}
+        if (!form.name.trim()) e.name = 'Nom kiritilishi shart'
+        if (!form.price || parseInt(form.price) <= 0) e.price = 'Narx kiritilishi shart'
+        setErrors(e)
+        return Object.keys(e).length === 0
+    }
     
-    const openAdd = () => { setForm({ name: '', weight: '', price: '', category_slug: 'sabzavot', emoji: '' }); setEditItem(null); setShowForm(true) }
-    const openEdit = (p) => { setForm({ name: p.name, weight: p.weight || '', price: p.price, category_slug: p.category_slug || p.category, emoji: p.emoji || '' }); setEditItem(p); setShowForm(true) }
+    const handleImageChange = (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+        if (file.size > 5 * 1024 * 1024) { alert("Rasm 5MB dan kichik bo'lishi kerak"); return }
+        setImageFile(file)
+        setImagePreview(URL.createObjectURL(file))
+    }
     
     const save = async () => {
-        if (!form.name || !form.price) return alert('Nom va narx majburiy!')
-            try {
-            const data = { ...form, price: parseInt(form.price) }
-            if (editItem) await axios.put(`${API}/products/${editItem.id}`, { ...data, in_stock: 1 })
-                else await axios.post(`${API}/products`, data)
-            setShowForm(false)
-            onRefresh()
-        } catch { alert('Xato yuz berdi') }
+        if (!validate()) return
+        setSaving(true)
+        try {
+            const data = { ...form, price: parseInt(form.price), in_stock: form.in_stock ? 1 : 0 }
+            let productId = item?.id
+            
+            if (item) {
+                await axios.put(`${API}/products/${item.id}`, data)
+            } else {
+                const res = await axios.post(`${API}/products`, data)
+                productId = res.data.id
+            }
+            
+            // Rasm yuklash
+            if (imageFile && productId) {
+                setUploading(true)
+                const fd = new FormData()
+                fd.append('image', imageFile)
+                await axios.post(`${API}/products/${productId}/image`, fd, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                })
+                setUploading(false)
+            }
+            
+            onSave()
+        } catch (e) {
+            console.error(e)
+            alert('Xato: ' + (e.response?.data?.error || e.message))
+        }
+        setSaving(false)
     }
     
-    const del = async (id) => {
-        if (!confirm('O\'chirishni tasdiqlaysizmi?')) return
-        await axios.delete(`${API}/products/${id}`)
+    return (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:20, fontFamily:"'Nunito', sans-serif" }}
+        onClick={e => e.target === e.currentTarget && onClose()}>
+        <div style={{ background:'#fff', borderRadius:20, width:'100%', maxWidth:480, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 20px 60px rgba(0,0,0,0.15)' }}>
+        
+        {/* Header */}
+        <div style={{ padding:'18px 22px 14px', borderBottom:'1px solid #f5f5f5', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div>
+        <div style={{ fontSize:17, fontWeight:800, color:'#111' }}>{item ? 'Mahsulotni tahrirlash' : 'Yangi mahsulot'}</div>
+        <div style={{ fontSize:12, color:'#aaa', marginTop:1 }}>{item ? `ID: #${item.id}` : "Yangi mahsulot qo'shish"}</div>
+        </div>
+        <button onClick={onClose} style={{ width:30, height:30, borderRadius:'50%', background:'#f5f5f5', border:'none', cursor:'pointer', fontSize:15, color:'#888', display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+        </div>
+        
+        <div style={{ padding:'18px 22px 22px' }}>
+        
+        {/* Rasm yuklash */}
+        <div style={{ marginBottom:18 }}>
+        <div style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:8 }}>MAHSULOT RASMI</div>
+        <div style={{ display:'flex', gap:14, alignItems:'center' }}>
+        {/* Preview */}
+        <div onClick={() => fileRef.current?.click()}
+        style={{ width:90, height:90, borderRadius:16, border:`2px dashed ${imagePreview?'#21a95a':'#ddd'}`, background:imagePreview?'#f0fdf4':'#fafafa', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', overflow:'hidden', flexShrink:0, transition:'all .15s' }}
+        onMouseEnter={e=>e.currentTarget.style.borderColor='#21a95a'}
+        onMouseLeave={e=>e.currentTarget.style.borderColor=imagePreview?'#21a95a':'#ddd'}>
+        {imagePreview
+            ? <img src={imagePreview} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+            : <div style={{ textAlign:'center' }}>
+            <div style={{ fontSize:24, color:'#ccc' }}>📷</div>
+            <div style={{ fontSize:10, color:'#ccc', marginTop:3 }}>Rasm</div>
+            </div>
+        }
+        </div>
+        
+        <div style={{ flex:1 }}>
+        <button onClick={() => fileRef.current?.click()}
+        style={{ width:'100%', padding:'9px', background:'#f5f5f5', border:'1px solid #e8e8e8', borderRadius:10, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit', marginBottom:6, color:'#333' }}>
+        📁 Rasm yuklash
+        </button>
+        <div style={{ fontSize:11, color:'#aaa', lineHeight:1.5 }}>
+        JPG, PNG, WEBP · Max 5MB<br/>
+        Tavsiya: 500×500 px, kvadrat
+        </div>
+        {imagePreview && (
+            <button onClick={() => { setImageFile(null); setImagePreview(null) }}
+            style={{ marginTop:6, fontSize:11, color:'#dc2626', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>
+            ✕ Rasmni olib tashlash
+            </button>
+        )}
+        </div>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" onChange={handleImageChange} style={{ display:'none' }} />
+        </div>
+        
+        {/* Nomi */}
+        <div style={{ marginBottom:12 }}>
+        <label style={{ fontSize:11, fontWeight:700, color:errors.name?'#dc2626':'#888', display:'block', marginBottom:5 }}>
+        NOMI * {errors.name && `— ${errors.name}`}
+        </label>
+        <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}
+        placeholder="Masalan: Pomidor"
+        style={{ ...C.input, borderColor:errors.name?'#dc2626':'#e8e8e8', padding:'10px 12px', fontSize:14 }} />
+        </div>
+        
+        {/* Weight + Price */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+        <div>
+        <label style={{ fontSize:11, fontWeight:700, color:'#888', display:'block', marginBottom:5 }}>OG'IRLIGI</label>
+        <input value={form.weight} onChange={e=>setForm({...form,weight:e.target.value})}
+        placeholder="1 kg, 500 g..."
+        style={{ ...C.input, padding:'10px 12px', fontSize:14 }} />
+        </div>
+        <div>
+        <label style={{ fontSize:11, fontWeight:700, color:errors.price?'#dc2626':'#888', display:'block', marginBottom:5 }}>
+        NARXI * {errors.price && `— ${errors.price}`}
+        </label>
+        <div style={{ position:'relative' }}>
+        <input type="number" value={form.price} onChange={e=>setForm({...form,price:e.target.value})}
+        placeholder="12000"
+        style={{ ...C.input, borderColor:errors.price?'#dc2626':'#e8e8e8', padding:'10px 44px 10px 12px', fontSize:14 }} />
+        <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#aaa' }}>so'm</span>
+        </div>
+        {form.price > 0 && <div style={{ fontSize:11, color:'#21a95a', marginTop:3, fontWeight:600 }}>{parseInt(form.price).toLocaleString('uz-UZ')} so'm</div>}
+        </div>
+        </div>
+        
+        {/* Kategoriya */}
+        <div style={{ marginBottom:16 }}>
+        <label style={{ fontSize:11, fontWeight:700, color:'#888', display:'block', marginBottom:8 }}>KATEGORIYA</label>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+        {CAT_LIST.map(c => (
+            <button key={c.slug} onClick={() => setForm({...form,category_slug:c.slug})}
+            style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', border:`1.5px solid ${form.category_slug===c.slug?'#21a95a':'#e8e8e8'}`, borderRadius:20, background:form.category_slug===c.slug?'#21a95a':'#fff', color:form.category_slug===c.slug?'#fff':'#555', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+            {c.emoji} {c.label}
+            </button>
+        ))}
+        </div>
+        </div>
+        
+        {/* Sotuvda toggle */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px', background:'#f9f9f9', borderRadius:12, marginBottom:18 }}>
+        <div>
+        <div style={{ fontSize:13, fontWeight:700, color:'#333' }}>Sotuvda mavjud</div>
+        <div style={{ fontSize:11, color:'#aaa', marginTop:1 }}>{form.in_stock ? "Ko'rinadi" : "Yashirilgan"}</div>
+        </div>
+        <div onClick={() => setForm({...form, in_stock: form.in_stock?0:1})}
+        style={{ width:44, height:24, borderRadius:12, background:form.in_stock?'#21a95a':'#ddd', cursor:'pointer', position:'relative', transition:'background .2s', flexShrink:0 }}>
+        <div style={{ width:20, height:20, borderRadius:'50%', background:'#fff', position:'absolute', top:2, left:form.in_stock?22:2, transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,0.2)' }} />
+        </div>
+        </div>
+        
+        {/* Buttons */}
+        <div style={{ display:'flex', gap:10 }}>
+        <button onClick={onClose} style={{ flex:1, padding:'12px', background:'#f5f5f5', color:'#555', border:'none', borderRadius:12, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+        Bekor
+        </button>
+        <button onClick={save} disabled={saving||uploading}
+        style={{ flex:2, padding:'12px', background:saving||uploading?'#aaa':'#ffd700', color:'#111', border:'none', borderRadius:12, fontSize:14, fontWeight:800, cursor:saving?'default':'pointer', fontFamily:'inherit' }}>
+        {uploading ? '📤 Rasm yuklanmoqda...' : saving ? 'Saqlanmoqda...' : item ? '✓ Saqlash' : '+ Qo\'shish'}
+        </button>
+        </div>
+        </div>
+        </div>
+        </div>
+    )
+}
+
+function Products({ products, onRefresh }) {
+    const [showModal, setShowModal] = useState(false)
+    const [editItem, setEditItem] = useState(null)
+    const [search, setSearch] = useState('')
+    const [catFilter, setCatFilter] = useState('all')
+    const [showHidden, setShowHidden] = useState(true)
+    
+    const filtered = products.filter(p => {
+        const nameOk = p.name.toLowerCase().includes(search.toLowerCase())
+        const catOk = catFilter === 'all' || p.category_slug === catFilter || p.category === catFilter
+        const stockOk = showHidden || p.in_stock !== 0
+        return nameOk && catOk && stockOk
+    })
+    
+    const openAdd = () => { setEditItem(null); setShowModal(true) }
+    const openEdit = (p) => { setEditItem(p); setShowModal(true) }
+    
+    const del = async (p) => {
+        if (!confirm(`"${p.name}" ni o'chirishni tasdiqlaysizmi?`)) return
+        await axios.delete(`${API}/products/${p.id}`)
         onRefresh()
     }
+    
+    const toggleStock = async (p) => {
+        const newStock = p.in_stock ? 0 : 1
+        await axios.patch(`${API}/products/${p.id}/stock`, { in_stock: newStock })
+        onRefresh()
+    }
+    
+    const visible = products.filter(p => p.in_stock !== 0).length
+    const hidden = products.filter(p => p.in_stock === 0).length
     
     return (
         <div>
         {/* Toolbar */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Mahsulot qidirish..." style={{ ...C.input, paddingLeft: 32 }} />
-        <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#ccc', fontSize: 14 }}>🔍</span>
+        <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ flex:1, minWidth:180, position:'relative' }}>
+        <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'#ccc' }}>🔍</span>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Mahsulot qidirish..."
+        style={{ ...C.input, paddingLeft:32 }} />
         </div>
-        <button onClick={openAdd} style={C.btn()}>+ Yangi mahsulot</button>
-        </div>
-        
-        {/* Add/Edit form */}
-        {showForm && (
-            <div style={{ ...C.card, marginBottom: 16, borderColor: '#ffd700' }}>
-            <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 14, color: '#1a1a1a' }}>
-            {editItem ? `Tahrirlash: ${editItem.name}` : 'Yangi mahsulot qo\'shish'}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
-            <div><label style={{ fontSize: 11, fontWeight: 700, color: '#888', display: 'block', marginBottom: 4 }}>Nomi *</label><input style={C.input} value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Pomidor" /></div>
-            <div><label style={{ fontSize: 11, fontWeight: 700, color: '#888', display: 'block', marginBottom: 4 }}>Og'irligi</label><input style={C.input} value={form.weight} onChange={e => setForm({...form, weight: e.target.value})} placeholder="1 kg" /></div>
-            <div><label style={{ fontSize: 11, fontWeight: 700, color: '#888', display: 'block', marginBottom: 4 }}>Narxi (so'm) *</label><input style={C.input} type="number" value={form.price} onChange={e => setForm({...form, price: e.target.value})} placeholder="12000" /></div>
-            <div><label style={{ fontSize: 11, fontWeight: 700, color: '#888', display: 'block', marginBottom: 4 }}>Kategoriya</label>
-            <select style={C.select} value={form.category_slug} onChange={e => setForm({...form, category_slug: e.target.value})}>
-            {CATS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            </div>
-            <div><label style={{ fontSize: 11, fontWeight: 700, color: '#888', display: 'block', marginBottom: 4 }}>Emoji</label><input style={C.input} value={form.emoji} onChange={e => setForm({...form, emoji: e.target.value})} placeholder="🍅" /></div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={save} style={C.btn()}>Saqlash</button>
-            <button onClick={() => setShowForm(false)} style={C.btn('#f0f0f0', '#555')}>Bekor</button>
-            </div>
-            </div>
-        )}
-        
-        {/* Table */}
-        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-        <tr>{['', 'Nomi', 'Kategoriya', 'Og\'irligi', 'Narxi', 'Amallar'].map(h => <th key={h} style={C.th}>{h}</th>)}</tr>
-        </thead>
-        <tbody>
-        {filtered.map(p => (
-            <tr key={p.id}
-            onMouseEnter={e => e.currentTarget.style.background = '#fafafa'}
-            onMouseLeave={e => e.currentTarget.style.background = ''}
-            >
-            <td style={{ ...C.td, fontSize: 22, width: 40, textAlign: 'center' }}>{p.emoji}</td>
-            <td style={{ ...C.td, fontWeight: 700, color: '#1a1a1a' }}>{p.name}</td>
-            <td style={C.td}><span style={{ background: '#f5f5f5', padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600, color: '#555' }}>{p.category_slug || p.category}</span></td>
-            <td style={C.td}>{p.weight}</td>
-            <td style={{ ...C.td, fontWeight: 700, color: '#21a95a' }}>{p.price?.toLocaleString('uz-UZ')} so'm</td>
-            <td style={C.td}>
-            <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => openEdit(p)} style={{ ...C.btn('#f0fdf4', '#166534'), padding: '5px 12px', fontSize: 12 }}>Tahrirlash</button>
-            <button onClick={() => del(p.id)} style={{ ...C.btn('#fee2e2', '#dc2626'), padding: '5px 12px', fontSize: 12 }}>O'chirish</button>
-            </div>
-            </td>
-            </tr>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {[{slug:'all',label:'Barchasi'}, ...CAT_LIST].map(c => (
+            <button key={c.slug} onClick={()=>setCatFilter(c.slug)}
+            style={{ padding:'6px 12px', borderRadius:20, border:`1px solid ${catFilter===c.slug?'#1a1a1a':'#e8e8e8'}`, background:catFilter===c.slug?'#1a1a1a':'#fff', color:catFilter===c.slug?'#fff':'#666', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+            {c.emoji && c.slug!=='all' && <span style={{marginRight:3}}>{c.emoji}</span>}{c.label}
+            </button>
         ))}
-        {filtered.length === 0 && <tr><td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: '#ccc' }}>Mahsulot topilmadi</td></tr>}
-        </tbody>
-        </table>
         </div>
+        <button onClick={()=>setShowHidden(!showHidden)}
+        style={{ padding:'7px 12px', borderRadius:20, border:'1px solid #e8e8e8', background:showHidden?'#f0fdf4':'#fff', color:showHidden?'#21a95a':'#666', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
+        {showHidden ? '👁 Yashirilganlar ko\'rinadi' : '🙈 Yashirilganlar yashirin'}
+        </button>
+        <button onClick={openAdd}
+        style={{ padding:'9px 18px', background:'#ffd700', border:'none', borderRadius:10, fontSize:13, fontWeight:800, cursor:'pointer', fontFamily:'inherit', flexShrink:0 }}>
+        + Yangi mahsulot
+        </button>
+        </div>
+        
+        {/* Stats */}
+        <div style={{ display:'flex', gap:10, marginBottom:16 }}>
+        {[
+            { label:'Jami', val:products.length, color:'#111' },
+            { label:'Sotuvda', val:visible, color:'#21a95a' },
+            { label:'Yashirilgan', val:hidden, color:'#dc2626' },
+        ].map((s,i) => (
+            <div key={i} style={{ flex:1, background:'#fff', borderRadius:10, padding:'10px 14px', border:'1px solid #f0f0f0' }}>
+            <div style={{ fontSize:22, fontWeight:800, color:s.color }}>{s.val}</div>
+            <div style={{ fontSize:11, color:'#aaa', fontWeight:600, marginTop:1 }}>{s.label}</div>
+            </div>
+        ))}
+        </div>
+        
+        {/* Cards grid */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(190px, 1fr))', gap:12 }}>
+        {filtered.map(p => (
+            <div key={p.id} style={{ background:'#fff', borderRadius:14, border:`1.5px solid ${p.in_stock===0?'#fca5a5':'#f0f0f0'}`, overflow:'hidden', opacity:p.in_stock===0?0.75:1, transition:'box-shadow .15s' }}
+            onMouseEnter={e=>e.currentTarget.style.boxShadow='0 4px 16px rgba(0,0,0,0.08)'}
+            onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
+            
+            {/* Image */}
+            <div style={{ height:120, background:'#f7f7f7', position:'relative', overflow:'hidden' }}>
+            {p.image_url
+                ? <img src={p.image_url} alt={p.name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center', color:'#ddd', flexDirection:'column', gap:4 }}>
+                <span style={{ fontSize:36 }}>📦</span>
+                <span style={{ fontSize:11, color:'#ccc' }}>Rasm yo'q</span>
+                </div>
+            }
+            {p.in_stock === 0 && (
+                <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.35)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <span style={{ background:'#dc2626', color:'#fff', fontSize:10, fontWeight:800, padding:'3px 8px', borderRadius:8 }}>YASHIRILGAN</span>
+                </div>
+            )}
+            </div>
+            
+            {/* Info */}
+            <div style={{ padding:'10px 12px 12px' }}>
+            <div style={{ fontSize:14, fontWeight:800, color:'#111', marginBottom:2 }}>{p.name}</div>
+            <div style={{ fontSize:11, color:'#aaa', marginBottom:6 }}>{p.weight}</div>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+            <span style={{ fontSize:14, fontWeight:800, color:'#21a95a' }}>{p.price?.toLocaleString('uz-UZ')} so'm</span>
+            <span style={{ fontSize:10, background:'#f5f5f5', color:'#888', padding:'2px 7px', borderRadius:8, fontWeight:600 }}>
+            {CAT_LIST.find(c=>c.slug===(p.category_slug||p.category))?.emoji}
+            </span>
+            </div>
+            
+            {/* Actions */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+            <button onClick={()=>openEdit(p)}
+            style={{ padding:'7px', background:'#f0fdf4', color:'#166534', border:'none', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+            ✏️ Tahrirlash
+            </button>
+            <button onClick={()=>toggleStock(p)}
+            style={{ padding:'7px', background:p.in_stock?'#fff8e1':'#f0fdf4', color:p.in_stock?'#92400e':'#166534', border:`1px solid ${p.in_stock?'#fde68a':'#bbf7d0'}`, borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+            {p.in_stock ? '🙈 Yashir' : '👁 Ko\'rsat'}
+            </button>
+            <button onClick={()=>del(p)}
+            style={{ gridColumn:'1/-1', padding:'7px', background:'#fee2e2', color:'#dc2626', border:'none', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+            🗑️ O'chirish
+            </button>
+            </div>
+            </div>
+            </div>
+        ))}
+        
+        {/* Add card */}
+        <div onClick={openAdd}
+        style={{ background:'#fff', borderRadius:14, border:'2px dashed #e0e0e0', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:220, cursor:'pointer', transition:'all .15s', gap:8 }}
+        onMouseEnter={e=>{e.currentTarget.style.borderColor='#21a95a';e.currentTarget.style.background='#f0fdf4'}}
+        onMouseLeave={e=>{e.currentTarget.style.borderColor='#e0e0e0';e.currentTarget.style.background='#fff'}}>
+        <div style={{ fontSize:32, color:'#ccc' }}>+</div>
+        <div style={{ fontSize:13, fontWeight:700, color:'#bbb' }}>Yangi mahsulot</div>
+        </div>
+        </div>
+        
+        {showModal && (
+            <ProductModal item={editItem} onSave={()=>{setShowModal(false);onRefresh()}} onClose={()=>setShowModal(false)} />
+        )}
         </div>
     )
 }
@@ -319,6 +566,7 @@ export default function AdminPanel() {
     const [auth, setAuth] = useState(false)
     const [pass, setPass] = useState('')
     const [tab, setTab] = useState('dashboard')
+    
     const [orders, setOrders] = useState([])
     const [products, setProducts] = useState([])
     const [loading, setLoading] = useState(true)
@@ -328,7 +576,7 @@ export default function AdminPanel() {
     
     const loadData = async () => {
         try {
-            const [o, p] = await Promise.all([axios.get(`${API}/orders`), axios.get(`${API}/products`)])
+            const [o, p] = await Promise.all([axios.get(`${API}/orders`), axios.get(`${API}/products?all=true`)])
             setOrders(o.data.map(x => ({ ...x, items: typeof x.items === 'string' ? JSON.parse(x.items) : x.items })))
             setProducts(p.data)
         } catch { /* offline */ }

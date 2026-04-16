@@ -257,10 +257,18 @@ function MapModal({ initial, onConfirm, onClose }) {
             </div>
         )}
         
-        {/* Geo locate button */}
+        {/* Geo locate button — Leaflet uslubida */}
         <button onClick={geoLocate} disabled={locating}
-        style={{ position: 'absolute', bottom: 60, right: 12, zIndex: 500, width: 36, height: 36, background: '#fff', border: '1px solid #e0e0e0', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-        {locating ? '⏳' : '📡'}
+        title="Mening joylashuvim"
+        style={{ position: 'absolute', bottom: 130, right: 10, zIndex: 500, width: 34, height: 34, background: '#fff', border: '2px solid rgba(0,0,0,0.2)', borderRadius: 6, cursor: locating ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 5px rgba(0,0,0,0.25)', transition: 'background .15s' }}
+        onMouseEnter={e => { if (!locating) e.currentTarget.style.background = '#f4f4f4' }}
+        onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+        {locating
+            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v2M12 16v2M6 12H4M20 12h-2"/></svg>
+            : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="3 11 22 2 13 21 11 13 3 11" fill="#555"/>
+            </svg>
+        }
         </button>
         </div>
         
