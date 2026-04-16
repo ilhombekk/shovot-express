@@ -1,63 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { useCartStore } from '../store/cartStore'
-import { getProducts, getOrders } from '../api'
+import { getProducts } from '../api'
 import CartModal from '../components/CartModal'
 import AddressModal from '../components/AddressModal'
 import { getActiveAddress } from '../store/addressStore'
 import OrdersPage from './OrdersPage'
 
-const STATUS_LABEL = {
-  new:        { label: 'Yangi',         color: '#92400e', bg: '#fef3c7' },
-  confirmed:  { label: 'Tasdiqlandi',   color: '#1e40af', bg: '#dbeafe' },
-  delivering: { label: 'Yetkazilmoqda', color: '#065f46', bg: '#d1fae5' },
-  done:       { label: 'Yetkazildi',    color: '#166534', bg: '#f0fdf4' },
-  cancelled:  { label: 'Bekor',         color: '#991b1b', bg: '#fee2e2' },
-}
+const FEE = 5000
 
-function ProfilePopup({ user, onClose, onAddress, onOrders }) {
-  const ref = useRef(null)
-  
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose() }
-    setTimeout(() => document.addEventListener('mousedown', handler), 0)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-  
-  return (
-    <div ref={ref} style={{ position: 'absolute', right: 0, top: 42, background: '#fff', border: '1px solid #f0f0f0', borderRadius: 16, minWidth: 240, boxShadow: '0 8px 32px rgba(0,0,0,0.12)', zIndex: 100, overflow: 'hidden' }}>
-    <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid #f5f5f5' }}>
-    <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 3 }}>{user.name}</div>
-    <div style={{ fontSize: 12, color: '#888', display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-    <span>📞</span>{user.phone}
-    </div>
-    <div onClick={onAddress} style={{ fontSize: 12, color: '#21a95a', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
-    <span>📍</span>Manzillarni boshqarish →
-    </div>
-    <div onClick={onOrders} style={{ fontSize: 12, color: '#555', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
-    <span>📦</span>Barcha buyurtmalar →
-    </div>
-    </div>
-    <div style={{ padding: '10px 16px 14px' }}>
-    <button onClick={() => { localStorage.removeItem('shovot_user'); window.location.reload() }}
-    style={{ width: '100%', padding: '8px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-    Chiqish
-    </button>
-    </div>
-    </div>
-  )
-}
-
-const CATEGORIES = [
-  { id: 'all',      label: 'Barcha mahsulotlar', emoji: '🏪' },
-  { id: 'sabzavot', label: 'Sabzavot',            emoji: '🥬' },
-  { id: 'meva',     label: 'Meva',                emoji: '🍎' },
-  { id: 'sut',      label: 'Sut mahsulotlar',     emoji: '🥛' },
-  { id: 'non',      label: 'Non & xamir',          emoji: '🍞' },
-  { id: 'gosht',    label: "Go'sht",               emoji: '🥩' },
-  { id: 'ichimlik', label: 'Ichimliklar',          emoji: '🧃' },
+const CATS = [
+  { id:'all',      label:'Barcha mahsulotlar', short:'Barchasi', emoji:'🏪' },
+  { id:'sabzavot', label:'Sabzavot',           short:'Sabzavot', emoji:'🥬' },
+  { id:'meva',     label:'Meva',               short:'Meva',     emoji:'🍎' },
+  { id:'sut',      label:'Sut mahsulot',       short:'Sut',      emoji:'🥛' },
+  { id:'non',      label:'Non & xamir',        short:'Non',      emoji:'🍞' },
+  { id:'gosht',    label:"Go'sht",             short:"Go'sht",   emoji:'🥩' },
+  { id:'ichimlik', label:'Ichimliklar',        short:'Ichimlik', emoji:'🧃' },
 ]
 
-const MOCK_PRODUCTS = [
+const PRODUCTS = [
   { id:1,  name:'Pomidor',      weight:'1 kg',    price:12000, category:'sabzavot', emoji:'🍅' },
   { id:2,  name:'Bodring',      weight:'1 kg',    price:8000,  category:'sabzavot', emoji:'🥒' },
   { id:3,  name:'Kartoshka',    weight:'1 kg',    price:5000,  category:'sabzavot', emoji:'🥔' },
@@ -82,252 +43,327 @@ const MOCK_PRODUCTS = [
   { id:22, name:'Choy',         weight:'100 g',   price:18000, category:'ichimlik', emoji:'🍵' },
 ]
 
-const DELIVERY_FEE = 5000
-
-function ProdCard({ product }) {
-  const { items, add, remove } = useCartStore()
-  const qty = items[product.id] || 0
+// ─────────────────────────────────────────────────────
+function ProfilePopup({ user, onClose, onAddress, onOrders }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose() }
+    setTimeout(() => document.addEventListener('mousedown', h), 0)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
   return (
-    <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid #f0f0f0', transition: 'box-shadow 0.15s' }}
-    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}
-    onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
-    <div style={{ position: 'relative', height: 120, background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 60 }}>
-    {product.emoji}
-    {qty === 0 ? (
-      <button onClick={() => add(product)}
-      style={{ position: 'absolute', bottom: 8, right: 8, width: 32, height: 32, borderRadius: '50%', background: '#fff', border: '1px solid #ddd', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#21a95a', fontWeight: 700, boxShadow: '0 1px 4px rgba(0,0,0,0.1)', transition: 'all 0.15s' }}
-      onMouseEnter={e => { e.currentTarget.style.background = '#21a95a'; e.currentTarget.style.color = '#fff' }}
-      onMouseLeave={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.color = '#21a95a' }}>+</button>
-    ) : (
-      <div style={{ position: 'absolute', bottom: 8, right: 8, display: 'flex', alignItems: 'center', gap: 5, background: '#21a95a', borderRadius: 20, padding: '4px 8px' }}>
-      <button onClick={() => remove(product.id)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: 0, fontWeight: 700 }}>−</button>
-      <span style={{ color: '#fff', fontSize: 13, fontWeight: 800, minWidth: 14, textAlign: 'center' }}>{qty}</span>
-      <button onClick={() => add(product)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: 0, fontWeight: 700 }}>+</button>
-      </div>
-    )}
+    <div ref={ref} style={{ position:'absolute', right:0, top:46, background:'#fff', border:'1px solid #f0f0f0', borderRadius:16, minWidth:220, boxShadow:'0 8px 32px rgba(0,0,0,0.13)', zIndex:300, overflow:'hidden' }}>
+    <div style={{ padding:'14px 16px 12px', borderBottom:'1px solid #f5f5f5' }}>
+    <div style={{ fontSize:15, fontWeight:800, marginBottom:3 }}>{user.name}</div>
+    <div style={{ fontSize:12, color:'#888', marginBottom:2 }}>📞 {user.phone}</div>
+    <div onClick={onAddress} style={{ fontSize:12, color:'#21a95a', cursor:'pointer', fontWeight:700, marginTop:8 }}>📍 Manzillarni boshqarish →</div>
+    <div onClick={onOrders} style={{ fontSize:12, color:'#555', cursor:'pointer', fontWeight:700, marginTop:6 }}>📦 Barcha buyurtmalar →</div>
     </div>
-    <div style={{ padding: '10px 12px 12px' }}>
-    <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a1a', marginBottom: 3 }}>{product.price.toLocaleString('uz-UZ')} so'm</div>
-    <div style={{ fontSize: 13, color: '#333', marginBottom: 2, lineHeight: 1.3 }}>{product.name}</div>
-    <div style={{ fontSize: 12, color: '#aaa' }}>{product.weight}</div>
+    <div style={{ padding:'10px 16px 14px' }}>
+    <button onClick={() => { localStorage.removeItem('shovot_user'); window.location.reload() }}
+    style={{ width:'100%', padding:'8px', background:'#fee2e2', color:'#dc2626', border:'none', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
+    Chiqish
+    </button>
     </div>
     </div>
   )
 }
 
-function CartPanel({ products, onCheckout }) {
-  const { items, add, remove, getCartItems, getTotal } = useCartStore()
-  const cartItems = getCartItems(products)
-  const subtotal = getTotal(products)
-  const total = subtotal + DELIVERY_FEE
-  const count = Object.values(items).reduce((s, q) => s + q, 0)
-  
+// ─────────────────────────────────────────────────────
+function Card({ p, mobile }) {
+  const { items, add, remove } = useCartStore()
+  const qty = items[p.id] || 0
   return (
-    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
-    <div style={{ padding: '16px', borderBottom: '1px solid #f5f5f5' }}>
-    <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>Savat</div>
-    <div style={{ fontSize: 13, color: '#21a95a', fontWeight: 700 }}>⚡ 10–30 daqiqada yetkaziladi</div>
-    </div>
-    {cartItems.length === 0 ? (
-      <div style={{ padding: '32px 16px', textAlign: 'center', color: '#bbb' }}>
-      <div style={{ fontSize: 40, marginBottom: 8 }}>🛒</div>
-      <div style={{ fontSize: 13, fontWeight: 600 }}>Savat bo'sh</div>
+    <div style={{ background:'#fff', borderRadius:mobile?14:16, overflow:'hidden', height:'100%', display:'flex', flexDirection:'column' }}>
+    <div style={{ position:'relative', paddingTop: mobile ? '80%' : '72%', background:'#f7f7f7', flexShrink:0 }}>
+    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize: mobile ? 48 : 56 }}>{p.emoji}</div>
+    {qty === 0
+      ? <button onClick={()=>add(p)}
+      style={{ position:'absolute', bottom:8, right:8, width:mobile?28:32, height:mobile?28:32, borderRadius:'50%', background:'#fff', border:'1.5px solid #e0e0e0', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#21a95a', fontWeight:800, boxShadow:'0 2px 6px rgba(0,0,0,0.1)' }}>+</button>
+      : <div style={{ position:'absolute', bottom:8, right:8, display:'flex', alignItems:'center', gap:4, background:'#21a95a', borderRadius:20, padding:'3px 8px' }}>
+      <button onClick={()=>remove(p.id)} style={{ background:'none', border:'none', color:'#fff', fontSize:16, cursor:'pointer', lineHeight:1, padding:0, fontWeight:800 }}>−</button>
+      <span style={{ color:'#fff', fontSize:12, fontWeight:800, minWidth:14, textAlign:'center' }}>{qty}</span>
+      <button onClick={()=>add(p)} style={{ background:'none', border:'none', color:'#fff', fontSize:16, cursor:'pointer', lineHeight:1, padding:0, fontWeight:800 }}>+</button>
       </div>
-    ) : (
-      <>
-      <div style={{ overflowY: 'auto', maxHeight: 320 }}>
-      {cartItems.map(item => (
-        <div key={item.id} style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid #f8f8f8' }}>
-        <div style={{ fontSize: 26, width: 32, textAlign: 'center' }}>{item.emoji}</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
-        <div style={{ fontSize: 11, color: '#aaa' }}>{item.price.toLocaleString('uz-UZ')} so'm</div>
+    }
+    </div>
+    <div style={{ padding: mobile ? '8px 10px 10px' : '10px 12px 14px', flex:1 }}>
+    <div style={{ fontSize: mobile ? 13 : 15, fontWeight:800, color:'#111', marginBottom:2 }}>{p.price.toLocaleString('uz-UZ')} so'm</div>
+    <div style={{ fontSize: mobile ? 12 : 13, color:'#333' }}>{p.name}</div>
+    <div style={{ fontSize:11, color:'#aaa', marginTop:1 }}>{p.weight}</div>
+    </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────
+function CartSide({ products, onOpen }) {
+  const { items, add, remove, getCartItems, getTotal } = useCartStore()
+  const list = getCartItems(products)
+  const sub = getTotal(products)
+  const total = sub + FEE
+  const count = Object.values(items).reduce((s,v)=>s+v,0)
+  return (
+    <div style={{ background:'#fff', borderRadius:16, border:'1px solid #f0f0f0', overflow:'hidden', position:'sticky', top:84 }}>
+    <div style={{ padding:'16px 18px 12px', borderBottom:'1px solid #f5f5f5' }}>
+    <div style={{ fontSize:17, fontWeight:800, color:'#111' }}>Savat</div>
+    <div style={{ fontSize:12, color:'#21a95a', fontWeight:700, marginTop:3 }}>⚡ 10–30 daqiqada yetkaziladi</div>
+    </div>
+    {list.length === 0
+      ? <div style={{ padding:'36px 18px', textAlign:'center' }}>
+      <div style={{ fontSize:40, marginBottom:8 }}>🛒</div>
+      <div style={{ fontSize:13, fontWeight:600, color:'#bbb' }}>Savat bo'sh</div>
+      </div>
+      : <>
+      <div style={{ maxHeight:340, overflowY:'auto' }}>
+      {list.map(item => (
+        <div key={item.id} style={{ padding:'8px 16px', display:'flex', alignItems:'center', gap:10, borderBottom:'1px solid #f8f8f8' }}>
+        <span style={{ fontSize:24, flexShrink:0 }}>{item.emoji}</span>
+        <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.name}</div>
+        <div style={{ fontSize:11, color:'#aaa' }}>{item.price.toLocaleString('uz-UZ')} so'm</div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <button onClick={() => remove(item.id)} style={{ width: 22, height: 22, borderRadius: 6, border: '1px solid #e8e8e8', background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-        <span style={{ fontSize: 13, fontWeight: 800, minWidth: 14, textAlign: 'center' }}>{item.qty}</span>
-        <button onClick={() => add(item)} style={{ width: 22, height: 22, borderRadius: 6, background: '#21a95a', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+        <div style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
+        <button onClick={()=>remove(item.id)} style={{ width:24, height:24, borderRadius:8, border:'1.5px solid #e8e8e8', background:'#fff', cursor:'pointer', fontSize:14, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
+        <span style={{ fontSize:13, fontWeight:800, minWidth:16, textAlign:'center' }}>{item.qty}</span>
+        <button onClick={()=>add(item)} style={{ width:24, height:24, borderRadius:8, background:'#21a95a', border:'none', color:'#fff', cursor:'pointer', fontSize:14, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
         </div>
         </div>
       ))}
       </div>
-      <div style={{ padding: '12px 16px', borderTop: '1px solid #f0f0f0' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#999', marginBottom: 4 }}><span>Mahsulotlar ({count} ta)</span><span>{subtotal.toLocaleString('uz-UZ')} so'm</span></div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#999', marginBottom: 12 }}><span>Yetkazib berish</span><span>{DELIVERY_FEE.toLocaleString('uz-UZ')} so'm</span></div>
-      <button onClick={onCheckout}
-      style={{ width: '100%', padding: '13px', background: '#ffd700', border: 'none', borderRadius: 12, fontSize: 14, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'background 0.15s' }}
-      onMouseEnter={e => e.currentTarget.style.background = '#f5cc00'}
-      onMouseLeave={e => e.currentTarget.style.background = '#ffd700'}>
-      <span>Buyurtma berish</span>
-      <span>{total.toLocaleString('uz-UZ')} so'm</span>
+      <div style={{ padding:'12px 16px 16px', borderTop:'1px solid #f5f5f5' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#aaa', marginBottom:4 }}>
+      <span>Mahsulotlar ({count} ta)</span><span>{sub.toLocaleString('uz-UZ')} so'm</span>
+      </div>
+      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#aaa', marginBottom:12 }}>
+      <span>Yetkazib berish</span><span>{FEE.toLocaleString('uz-UZ')} so'm</span>
+      </div>
+      <button onClick={onOpen}
+      style={{ width:'100%', padding:'13px', background:'#ffd700', border:'none', borderRadius:12, fontSize:14, fontWeight:800, fontFamily:'inherit', cursor:'pointer', display:'flex', justifyContent:'space-between' }}>
+      <span>Buyurtma berish</span><span>{total.toLocaleString('uz-UZ')} so'm</span>
       </button>
       </div>
       </>
-    )}
+    }
     </div>
   )
 }
 
+// ─────────────────────────────────────────────────────
 export default function HomePage() {
-  const [products, setProducts] = useState(MOCK_PRODUCTS)
-  const [activeCat, setActiveCat] = useState('all')
-  const [search, setSearch] = useState('')
+  const [products, setProducts] = useState(PRODUCTS)
+  const [cat, setCat] = useState('all')
+  const [q, setQ] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
-  const [addressOpen, setAddressOpen] = useState(false)
+  const [addrOpen, setAddrOpen] = useState(false)
   const [ordersOpen, setOrdersOpen] = useState(false)
-  const [activeAddress, setActiveAddress] = useState(() => getActiveAddress())
+  const [addr, setAddr] = useState(() => getActiveAddress())
   const [showProfile, setShowProfile] = useState(false)
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 900)
-  const { items } = useCartStore()
-  const cartCount = Object.values(items).reduce((s, q) => s + q, 0)
+  const [w, setW] = useState(window.innerWidth)
   
-  const savedUser = (() => { try { return JSON.parse(localStorage.getItem('shovot_user') || 'null') } catch { return null } })()
+  const { items } = useCartStore()
+  const count = Object.values(items).reduce((s,v)=>s+v,0)
+  const sub = useCartStore(s => s.getTotal(products))
+  const user = (() => { try { return JSON.parse(localStorage.getItem('shovot_user')||'null') } catch { return null } })()
+  
+  const isMobile = w < 768
+  const isDesktop = w >= 1024
   
   useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < 900)
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
+    const fn = () => setW(window.innerWidth)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
   }, [])
   
   useEffect(() => {
-    getProducts().then(res => { if (res.data?.length) setProducts(res.data) }).catch(() => {})
+    getProducts().then(r => { if (r.data?.length) setProducts(r.data) }).catch(() => {})
     }, [])
   
-  const filtered = products.filter(p => {
-    const catOk = activeCat === 'all' || p.category === activeCat || p.category_slug === activeCat
-    const searchOk = p.name.toLowerCase().includes(search.toLowerCase())
-    return catOk && searchOk
+  const list = products.filter(p => {
+    const c = cat === 'all' || p.category === cat || p.category_slug === cat
+    return c && p.name.toLowerCase().includes(q.toLowerCase())
   })
   
-  const addressLabel = activeAddress
-  ? `${activeAddress.mahalla}${activeAddress.uy ? ', ' + activeAddress.uy : ''}`
+  const addrLabel = addr
+  ? `${addr.mahalla}${addr.uy ? ', ' + addr.uy : ''}`
   : 'Manzil tanlang'
   
-  return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f5', fontFamily: "'Nunito', sans-serif" }}>
-    
-    {/* Header */}
-    <div style={{ background: '#fff', borderBottom: '1px solid #ebebeb', position: 'sticky', top: 0, zIndex: 50 }}>
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 14, height: 58 }}>
-    {/* Logo */}
-    <div onClick={() => setOrdersOpen(false)} style={{ fontSize: 17, fontWeight: 800, color: '#1a1a1a', whiteSpace: 'nowrap', cursor: 'pointer' }}>
-    Shovot <span style={{ color: '#21a95a' }}>Express</span>
-    </div>
-    
-    {/* Address button — Yandex Lavka uslubida */}
-    <button onClick={() => setAddressOpen(true)}
-    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: '#f5f5f5', border: '1.5px solid #e8e8e8', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', maxWidth: 320, flexShrink: 0, transition: 'border-color 0.15s' }}
-    onMouseEnter={e => e.currentTarget.style.borderColor = '#21a95a'}
-    onMouseLeave={e => e.currentTarget.style.borderColor = '#e8e8e8'}>
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="#21a95a"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-    <span style={{ fontSize: 13, fontWeight: 700, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addressLabel}</span>
-    <span style={{ fontSize: 11, color: '#aaa' }}>›</span>
-    </button>
-    
-    {/* Search */}
-    <div style={{ flex: 1, maxWidth: 400, position: 'relative' }}>
-    <svg style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Mahsulot qidiring..."
-    style={{ width: '100%', padding: '8px 12px 8px 34px', background: '#f5f5f5', border: '1.5px solid transparent', borderRadius: 10, fontSize: 14, fontFamily: 'inherit', outline: 'none', color: '#1a1a1a', boxSizing: 'border-box' }}
-    onFocus={e => e.target.style.borderColor = '#21a95a'}
-    onBlur={e => e.target.style.borderColor = 'transparent'} />
-    </div>
-    
-    <div style={{ fontSize: 13, color: '#21a95a', fontWeight: 700, whiteSpace: 'nowrap' }}>⚡ 10–30 daqiqa</div>
-    
-    {/* User avatar */}
-    {savedUser && (
-      <div style={{ position: 'relative' }}>
-      <button onClick={() => setShowProfile(!showProfile)}
-      style={{ width: 34, height: 34, borderRadius: '50%', background: '#21a95a', border: 'none', color: '#fff', fontSize: 14, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {savedUser.name[0].toUpperCase()}
-      </button>
-      {showProfile && (
-        <ProfilePopup
-        user={savedUser}
-        onClose={() => setShowProfile(false)}
-        onAddress={() => { setShowProfile(false); setAddressOpen(true) }}
-        onOrders={() => { setShowProfile(false); setOrdersOpen(true) }}
-        />
-      )}
-      </div>
-    )}
-    
-    {isMobile && cartCount > 0 && (
-      <button onClick={() => setCartOpen(true)}
-      style={{ background: '#ffd700', border: 'none', borderRadius: 10, padding: '7px 14px', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
-      🛒 {cartCount}
-      </button>
-    )}
-    </div>
-    </div>
-    
-    {/* Body */}
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '20px', display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-    {/* Categories */}
-    <div style={{ width: 190, flexShrink: 0 }}>
-    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #f0f0f0', overflow: 'hidden', position: 'sticky', top: 76 }}>
-    {CATEGORIES.map((cat, i) => (
-      <button key={cat.id} onClick={() => { setActiveCat(cat.id); setSearch('') }}
-      style={{ width: '100%', padding: '10px 14px', border: 'none', borderBottom: i < CATEGORIES.length - 1 ? '1px solid #f8f8f8' : 'none', background: activeCat === cat.id ? '#f0faf4' : '#fff', color: activeCat === cat.id ? '#21a95a' : '#444', fontWeight: activeCat === cat.id ? 800 : 600, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, borderLeft: activeCat === cat.id ? '3px solid #21a95a' : '3px solid transparent', transition: 'all 0.15s' }}>
-      <span style={{ fontSize: 15 }}>{cat.emoji}</span>{cat.label}
-      </button>
-    ))}
-    </div>
-    </div>
-    
-    {/* Products */}
-    <div style={{ flex: 1, minWidth: 0 }}>
-    <div style={{ marginBottom: 14, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-    <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a1a1a', margin: 0 }}>
-    {search ? `"${search}" natijalari` : CATEGORIES.find(c => c.id === activeCat)?.label}
-    </h2>
-    <span style={{ fontSize: 13, color: '#bbb', fontWeight: 600 }}>{filtered.length} ta</span>
-    </div>
-    {filtered.length === 0 ? (
-      <div style={{ textAlign: 'center', padding: '60px 0', color: '#ccc' }}>
-      <div style={{ fontSize: 52, marginBottom: 10 }}>🔍</div>
-      <div style={{ fontSize: 15, fontWeight: 700, color: '#999' }}>Topilmadi</div>
-      </div>
-    ) : (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: 10 }}>
-      {filtered.map(p => <ProdCard key={p.id} product={p} />)}
-      </div>
-    )}
-    </div>
-    
-    {/* Cart (desktop) */}
-    {!isMobile && (
-      <div style={{ width: 260, flexShrink: 0, position: 'sticky', top: 76 }}>
-      <CartPanel products={products} onCheckout={() => setCartOpen(true)} />
-      </div>
-    )}
-    </div>
-    
-    {/* Mobile sticky cart */}
-    {isMobile && cartCount > 0 && (
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '10px 16px 20px', background: '#fff', borderTop: '1px solid #f0f0f0', zIndex: 40 }}>
-      <button onClick={() => setCartOpen(true)}
-      style={{ width: '100%', padding: '14px', background: '#ffd700', border: 'none', borderRadius: 14, fontSize: 15, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <span>🛒 Savatga o'tish · {cartCount} ta</span>
-      </button>
-      </div>
-    )}
-    
-    {/* Modals */}
-    <CartModal products={products} isOpen={cartOpen} onClose={() => setCartOpen(false)} />
-    <AddressModal
-    isOpen={addressOpen}
-    onClose={() => setAddressOpen(false)}
-    onSelect={(addr) => setActiveAddress(addr)}
-    />
-    
-    {/* Buyurtmalar sahifasi */}
-    {ordersOpen && (
-      <div style={{ position: 'fixed', inset: 0, background: '#f5f5f5', zIndex: 150, overflowY: 'auto' }}>
-      <OrdersPage onBack={() => setOrdersOpen(false)} />
-      </div>
-    )}
+  if (ordersOpen) return (
+    <div style={{ position:'fixed', inset:0, zIndex:150, overflowY:'auto', background:'#f5f5f5' }}>
+    <OrdersPage onBack={() => setOrdersOpen(false)} />
     </div>
   )
-}
+  
+  const gridCols = isMobile ? 2 : !isDesktop ? 3 : 4
+  
+  return (
+    <>
+    <style>{`
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body, #root { width: 100%; min-height: 100vh; }
+        body { font-family: 'Nunito', sans-serif; background: #f5f5f5; -webkit-font-smoothing: antialiased; }
+        .no-scroll::-webkit-scrollbar { display: none; }
+        .no-scroll { scrollbar-width: none; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
+      `}</style>
+      
+      <div style={{ display:'flex', flexDirection:'column', minHeight:'100vh' }}>
+      
+      {/* ══ HEADER ══════════════════════════════════════ */}
+      <header style={{ background:'#fff', borderBottom:'1px solid #ebebeb', position:'sticky', top:0, zIndex:100 }}>
+      
+      {/* Top row */}
+      <div style={{ maxWidth:1400, margin:'0 auto', padding: isMobile ? '0 12px' : '0 24px', height: isMobile ? 52 : 60, display:'flex', alignItems:'center', gap: isMobile ? 8 : 16 }}>
+      
+      {/* Logo */}
+      <div onClick={() => setOrdersOpen(false)}
+      style={{ fontSize: isMobile ? 15 : 18, fontWeight:900, color:'#111', whiteSpace:'nowrap', cursor:'pointer', letterSpacing:'-0.3px', flexShrink:0 }}>
+      Shovot <span style={{ color:'#21a95a' }}>Express</span>
+      </div>
+      
+      {/* Address */}
+      <button onClick={() => setAddrOpen(true)}
+      style={{ display:'flex', alignItems:'center', gap:5, padding: isMobile ? '5px 10px' : '7px 14px', background:'#f5f5f5', border:'1.5px solid transparent', borderRadius:24, cursor:'pointer', fontFamily:'inherit', maxWidth: isMobile ? 160 : 300, minWidth:0, flexShrink: isMobile ? 1 : 0, transition:'border-color .15s' }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = '#21a95a'}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="#21a95a" style={{ flexShrink:0 }}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+      <span style={{ fontSize: isMobile ? 12 : 13, fontWeight:700, color:'#111', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{addrLabel}</span>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2.5" style={{ flexShrink:0 }}><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      
+      {/* Search — tablet/desktop only */}
+      {!isMobile && (
+        <div style={{ flex:1, position:'relative', maxWidth:560 }}>
+        <svg style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Mahsulot qidiring..."
+        style={{ width:'100%', padding:'9px 14px 9px 36px', background:'#f5f5f5', border:'1.5px solid transparent', borderRadius:12, fontSize:14, fontFamily:'inherit', outline:'none', transition:'all .15s' }}
+        onFocus={e => { e.target.style.borderColor = '#21a95a'; e.target.style.background = '#fff' }}
+        onBlur={e => { e.target.style.borderColor = 'transparent'; e.target.style.background = '#f5f5f5' }} />
+        {q && <button onClick={() => setQ('')} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#bbb', fontSize:15 }}>✕</button>}
+        </div>
+      )}
+      
+      <div style={{ flexShrink:0, fontSize: isMobile ? 11 : 13, fontWeight:700, color:'#21a95a', whiteSpace:'nowrap' }}>
+      ⚡ {isMobile ? '10–30' : '10–30 daqiqa'}
+      </div>
+      
+      {/* Profile */}
+      {user && (
+        <div style={{ position:'relative', flexShrink:0 }}>
+        <button onClick={() => setShowProfile(!showProfile)}
+        style={{ width: isMobile ? 32 : 36, height: isMobile ? 32 : 36, borderRadius:'50%', background:'#21a95a', border:'none', color:'#fff', fontSize: isMobile ? 13 : 15, fontWeight:800, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {user.name[0].toUpperCase()}
+        </button>
+        {showProfile && <ProfilePopup user={user} onClose={() => setShowProfile(false)}
+        onAddress={() => { setShowProfile(false); setAddrOpen(true) }}
+        onOrders={() => { setShowProfile(false); setOrdersOpen(true) }} />}
+        </div>
+      )}
+      
+      {/* Mobile cart badge */}
+      {isMobile && count > 0 && (
+        <button onClick={() => setCartOpen(true)}
+        style={{ flexShrink:0, background:'#21a95a', border:'none', borderRadius:10, padding:'5px 10px', color:'#fff', fontWeight:800, fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>
+        🛒 {count}
+        </button>
+      )}
+      </div>
+      
+      {/* Mobile search row */}
+      {isMobile && (
+        <div style={{ padding:'0 12px 8px', position:'relative' }}>
+        <svg style={{ position:'absolute', left:22, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#bbb" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Mahsulot qidiring..."
+        style={{ width:'100%', padding:'9px 14px 9px 32px', background:'#f5f5f5', border:'1.5px solid transparent', borderRadius:12, fontSize:13, fontFamily:'inherit', outline:'none' }}
+        onFocus={e => { e.target.style.borderColor = '#21a95a'; e.target.style.background = '#fff' }}
+        onBlur={e => { e.target.style.borderColor = 'transparent'; e.target.style.background = '#f5f5f5' }} />
+        </div>
+      )}
+      
+      {/* Mobile category chips */}
+      {isMobile && (
+        <div className="no-scroll" style={{ display:'flex', gap:6, padding:'0 12px 10px', overflowX:'auto' }}>
+        {CATS.map(c => (
+          <button key={c.id} onClick={() => { setCat(c.id); setQ('') }}
+          style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 12px', borderRadius:20, border:`1.5px solid ${cat===c.id?'#21a95a':'#e8e8e8'}`, background:cat===c.id?'#21a95a':'#fff', color:cat===c.id?'#fff':'#555', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap', flexShrink:0 }}>
+          <span style={{ fontSize:14 }}>{c.emoji}</span>{c.short}
+          </button>
+        ))}
+        </div>
+      )}
+      </header>
+      
+      {/* ══ MAIN ════════════════════════════════════════ */}
+      <div style={{ flex:1, maxWidth:1400, margin:'0 auto', width:'100%', padding: isMobile ? '0' : '0 24px', display:'flex', gap:0, alignItems:'flex-start' }}>
+      
+      {/* Desktop sidebar */}
+      {!isMobile && (
+        <aside style={{ width:210, flexShrink:0, paddingTop:24, paddingRight:8 }}>
+        <nav style={{ background:'#fff', borderRadius:16, border:'1px solid #f0f0f0', overflow:'hidden', position:'sticky', top:84 }}>
+        {CATS.map((c,i) => (
+          <button key={c.id} onClick={() => { setCat(c.id); setQ('') }}
+          style={{ width:'100%', padding:'11px 16px', border:'none', borderBottom:i<CATS.length-1?'1px solid #f8f8f8':'none', background:cat===c.id?'#f0faf5':'#fff', color:cat===c.id?'#21a95a':'#444', fontWeight:cat===c.id?800:500, fontSize:14, fontFamily:'inherit', cursor:'pointer', textAlign:'left', display:'flex', alignItems:'center', gap:10, borderLeft:cat===c.id?'3px solid #21a95a':'3px solid transparent', transition:'all .12s' }}>
+          <span style={{ fontSize:17 }}>{c.emoji}</span>{c.label}
+          </button>
+        ))}
+        </nav>
+        </aside>
+      )}
+      
+      {/* Products */}
+      <main style={{ flex:1, minWidth:0, padding: isMobile ? '14px 12px 100px' : '24px 16px 40px' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: isMobile ? 12 : 18 }}>
+      <h1 style={{ fontSize: isMobile ? 17 : 22, fontWeight:800, color:'#111' }}>
+      {q ? `"${q}"` : CATS.find(c=>c.id===cat)?.label}
+      </h1>
+      <span style={{ fontSize:12, color:'#bbb', fontWeight:600, marginTop:2 }}>{list.length} ta</span>
+      </div>
+      {list.length === 0
+        ? <div style={{ textAlign:'center', padding:'60px 0', color:'#ccc' }}>
+        <div style={{ fontSize:48, marginBottom:10 }}>🔍</div>
+        <div style={{ fontSize:14, fontWeight:600, color:'#aaa' }}>Topilmadi</div>
+        </div>
+        : <div style={{ display:'grid', gridTemplateColumns:`repeat(${gridCols}, 1fr)`, gap: isMobile ? 8 : 12 }}>
+        {list.map(p => <Card key={p.id} p={p} mobile={isMobile} />)}
+        </div>
+      }
+      </main>
+      
+      {/* Desktop cart */}
+      {isDesktop && (
+        <aside style={{ width:300, flexShrink:0, paddingTop:24, paddingLeft:8 }}>
+        <CartSide products={products} onOpen={() => setCartOpen(true)} />
+        </aside>
+      )}
+      </div>
+      
+      {/* Mobile sticky cart button */}
+      {isMobile && count > 0 && (
+        <div style={{ position:'fixed', bottom:0, left:0, right:0, padding:'10px 12px 18px', background:'#fff', borderTop:'1px solid #f0f0f0', zIndex:50 }}>
+        <button onClick={() => setCartOpen(true)}
+        style={{ width:'100%', padding:'14px 16px', background:'#21a95a', color:'#fff', border:'none', borderRadius:14, fontSize:15, fontWeight:800, fontFamily:'inherit', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span>🛒 Savat · {count} ta</span>
+        <span>{(sub + FEE).toLocaleString('uz-UZ')} so'm</span>
+        </button>
+        </div>
+      )}
+      
+      {/* Tablet cart button */}
+      {!isMobile && !isDesktop && count > 0 && (
+        <div style={{ position:'fixed', bottom:20, right:24, zIndex:50 }}>
+        <button onClick={() => setCartOpen(true)}
+        style={{ padding:'13px 22px', background:'#21a95a', color:'#fff', border:'none', borderRadius:14, fontSize:14, fontWeight:800, fontFamily:'inherit', cursor:'pointer', boxShadow:'0 4px 20px rgba(33,169,90,.35)', display:'flex', alignItems:'center', gap:10 }}>
+        <span>🛒 {count} ta</span>
+        <span>·</span>
+        <span>{(sub + FEE).toLocaleString('uz-UZ')} so'm</span>
+        </button>
+        </div>
+      )}
+      </div>
+      
+      <CartModal products={products} isOpen={cartOpen} onClose={() => setCartOpen(false)} />
+      <AddressModal isOpen={addrOpen} onClose={() => setAddrOpen(false)} onSelect={a => setAddr(a)} />
+      </>
+    )
+  }
